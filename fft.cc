@@ -15,18 +15,45 @@ int fftw_type = FFTW_ESTIMATE;
 #include <map>
 #include <set> 
 
-// --- ISOLATED KISS FFT CACHE ---
+// --- ISOLATED KISS FFT CACHE (With pre-allocated ESP32-friendly buffers) ---
+#include "kiss_fft.h"
+#include "kiss_fftr.h"
+#include <map>
+#include <mutex>
+
+// A struct to hold the KISS config and its dedicated memory buffers
+// so we never call malloc() during the decode cycle.
+struct KissPlan {
+  kiss_fftr_cfg cfg;
+  float *m_in;
+  char *raw_out;
+  
+  KissPlan(int n) {
+    int nbins = (n / 2) + 1;
+    cfg = kiss_fftr_alloc(n, 0, NULL, NULL);
+    m_in = (float *) malloc(sizeof(float) * n);
+    raw_out = (char *) malloc(nbins * 8); // 8 bytes per complex bin
+    assert(cfg && m_in && raw_out);
+  }
+  
+  ~KissPlan() {
+    if(cfg) kiss_fftr_free(cfg);
+    if(m_in) free(m_in);
+    if(raw_out) free(raw_out);
+  }
+};
+
 static std::mutex kiss_mu;
-static std::map<int, kiss_fftr_cfg> kiss_fwd_cache;
+static std::map<int, KissPlan*> kiss_fwd_cache;
 
 static kiss_fftr_cfg get_kiss_fwd(int n) {
   kiss_mu.lock();
   if(kiss_fwd_cache.count(n) == 0) {
-    kiss_fwd_cache[n] = kiss_fftr_alloc(n, 0, NULL, NULL);
+    kiss_fwd_cache[n] = new KissPlan(n);
   }
-  kiss_fftr_cfg cfg = kiss_fwd_cache[n];
+  KissPlan *kp = kiss_fwd_cache[n];
   kiss_mu.unlock();
-  return cfg;
+  return kp->cfg;
 }
 // ------------------------------
 
@@ -177,24 +204,7 @@ get_plan(int n, const char *why)
 //
 // do just one FFT on samples[i0..i0+block]
 // real inputs, complex outputs.
-// output has (block / 2) + 1 points.
-//
-//
-// do just one FFT on samples[i0..i0+block]
-// real inputs, complex outputs.
-// output has (block / 2) + 1 points.
-//
-
-//
-// do just one FFT on samples[i0..i0+block]
-// real inputs, complex outputs.
-// output has (block / 2) + 1 points.
-//
-//
-//
-// do just one FFT on samples[i0..i0+block]
-// real inputs, complex outputs.
-// output has (block / 2) + 1 points.
+// output has (block / 2) + 1) points.
 //
 std::vector<std::complex<double>>
 one_fft(const std::vector<double> &samples, int i0, int block,
@@ -207,21 +217,24 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   int nbins = (block / 2) + 1;
 
   // ==========================================
-  // KISS FFT (All Forward Real-to-Complex FFTs)
+  // KISS FFT (TRULY allocate once and reuse!)
   // ==========================================
-  kiss_fftr_cfg kiss_cfg = get_kiss_fwd(block);
-  assert(kiss_cfg);
+  kiss_mu.lock();
+  if(kiss_fwd_cache.count(block) == 0) {
+    kiss_fwd_cache[block] = new KissPlan(block);
+  }
+  KissPlan *kp = kiss_fwd_cache[block];
+  kiss_mu.unlock();
 
-  float *m_in = (float *) malloc(sizeof(float) * block);
-  int out_byte_size = nbins * 8; 
-  char *raw_out = (char *) malloc(out_byte_size);
-  assert(m_in && raw_out);
+  // NO MORE MALLOC! Just use the buffers attached to the plan.
+  float *m_in = kp->m_in;
+  char *raw_out = kp->raw_out;
 
   for(int i = 0; i < block; i++){
     m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
   }
 
-  kiss_fftr(kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
+  kiss_fftr(kp->cfg, m_in, (kiss_fft_cpx*)raw_out);
 
   std::vector<std::complex<double>> out(nbins);
   for(int bi = 0; bi < nbins; bi++){
@@ -229,10 +242,8 @@ one_fft(const std::vector<double> &samples, int i0, int block,
     out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
   }
 
-  free(raw_out);
-  free(m_in);
-
   return out;
+  // ==========================================
 }
 
 //
@@ -253,51 +264,38 @@ ffts(const std::vector<double> &samples, int i0, int block, const char *why)
     bins[si].resize(nbins);
   }
 
-  Plan *p = get_plan(block, why);
-  fftw_plan m_plan = p->fwd_;
+  // ==========================================
+  // KISS FFT (Optimized for ESP32: allocate once, reuse!)
+  // ==========================================
+  kiss_fftr_cfg kiss_cfg = get_kiss_fwd(block);
+  assert(kiss_cfg);
 
-#if TIMING
-  double t0 = now();
-#endif
-
-  // allocate our own b/c using p->m_in and p->m_out isn't thread-safe.
-  double *m_in = (double *) fftw_malloc(sizeof(double) * p->n_);
-  fftw_complex *m_out = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) *
-                                                     ((p->n_ / 2) + 1));
-  assert(m_in && m_out);
-
-  // double *m_in = p->r_;
-  // fftw_complex *m_out = p->c_;
+  // Allocate buffers ONCE and reuse them for the whole loop
+  float *m_in = (float *) malloc(sizeof(float) * block);
+  int out_byte_size = nbins * 8;
+  char *raw_out = (char *) malloc(out_byte_size);
+  assert(m_in && raw_out);
 
   for(int si = 0; si < nblocks; si++){
     int off = i0 + si * block;
     for(int i = 0; i < block; i++){
-      if(off + i < nsamples){
-        double x = samples[off + i];
-        m_in[i] = x;
-      } else {
-        m_in[i] = 0;
-      }
+      m_in[i] = (off + i < nsamples) ? (float)samples[off + i] : 0.0f;
     }
 
-    fftw_execute_dft_r2c(m_plan, m_in, m_out);
+    kiss_fftr(kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
 
     for(int bi = 0; bi < nbins; bi++){
-      double re = m_out[bi][0];
-      double im = m_out[bi][1];
-      std::complex<double> c(re, im);
-      bins[si][bi] = c;
+      float *f_ptr = (float*)(raw_out + bi * 8);
+      bins[si][bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
     }
   }
 
-  fftw_free(m_in);
-  fftw_free(m_out);
-
-#if TIMING
-  p->time_ += now() - t0;
-#endif
+  // Free once at the very end
+  free(raw_out);
+  free(m_in);
 
   return bins;
+  // ==========================================
 }
 
 //
