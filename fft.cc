@@ -190,6 +190,12 @@ get_plan(int n, const char *why)
 // real inputs, complex outputs.
 // output has (block / 2) + 1 points.
 //
+//
+//
+// do just one FFT on samples[i0..i0+block]
+// real inputs, complex outputs.
+// output has (block / 2) + 1 points.
+//
 std::vector<std::complex<double>>
 one_fft(const std::vector<double> &samples, int i0, int block,
         const char *why, Plan *p)
@@ -201,98 +207,30 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   int nbins = (block / 2) + 1;
 
   // ==========================================
-  // KISS FFT INTERCEPTOR
-  // Add new block sizes here to test them safely!
+  // KISS FFT (All Forward Real-to-Complex FFTs)
   // ==========================================
-  if(block == 180000 || block == 336 || block == 33600) {
-    void *kiss_cfg = kiss_fftr_alloc(block, 0, NULL, NULL);
-    assert(kiss_cfg);
+  kiss_fftr_cfg kiss_cfg = get_kiss_fwd(block);
+  assert(kiss_cfg);
 
-    float *m_in = (float *) malloc(sizeof(float) * block);
-    int out_byte_size = nbins * 8; 
-    char *raw_out = (char *) malloc(out_byte_size);
-    assert(m_in && raw_out);
+  float *m_in = (float *) malloc(sizeof(float) * block);
+  int out_byte_size = nbins * 8; 
+  char *raw_out = (char *) malloc(out_byte_size);
+  assert(m_in && raw_out);
 
-    for(int i = 0; i < block; i++) {
-      m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
-    }
-
-    kiss_fftr((kiss_fftr_cfg)kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
-
-    std::vector<std::complex<double>> out(nbins);
-    for(int bi = 0; bi < nbins; bi++){
-      float *f_ptr = (float*)(raw_out + bi * 8);
-      out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
-    }
-
-    free(raw_out);
-    free(m_in);
-    free(kiss_cfg);
-
-    return out;
-  }
-  // ==========================================
-  // END KISS FFT INTERCEPTOR
-  // ==========================================
-
-  if(p){
-    assert(p->n_ == block);
-    p->uses_ += 1;
-  } else {
-    p = get_plan(block, why);
-  }
-  fftw_plan m_plan = p->fwd_;
-
-  assert((int) samples.size() - i0 >= block);
-
-  int m_in_allocated = 0;
-  double *m_in = (double*) samples.data() + i0;
-
-  if((((unsigned long long)m_in) % 16) != 0){
-    m_in = (double *) fftw_malloc(sizeof(double) * p->n_);
-    assert(m_in);
-    m_in_allocated = 1;
-    for(int i = 0; i < block; i++){
-      if(i0 + i < nsamples){
-        m_in[i] = samples[i0 + i];
-      } else {
-        m_in[i] = 0;
-      }
-    }
+  for(int i = 0; i < block; i++){
+    m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
   }
 
-  fftw_complex *m_out = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) *
-                                                     ((p->n_ / 2) + 1));
-  assert(m_out);
-
-  fftw_execute_dft_r2c(m_plan, m_in, m_out);
+  kiss_fftr(kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
 
   std::vector<std::complex<double>> out(nbins);
-
   for(int bi = 0; bi < nbins; bi++){
-    double re = m_out[bi][0];
-    double im = m_out[bi][1];
-    out[bi] = std::complex<double>(re, im);
+    float *f_ptr = (float*)(raw_out + bi * 8);
+    out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
   }
 
-  // --- DIAGNOSTIC PRINT (Commented out to prevent timeout) ---
-  /*
-  static std::set<std::string> seen_profiles;
-  std::string key = std::to_string(block) + "_" + why;
-  if(seen_profiles.count(key) == 0) {
-    seen_profiles.insert(key);
-    fprintf(stderr, "FFTW one_fft: block=%d, why=%s\n", block, why);
-    int print_limit = (nbins < 10) ? nbins : 10;
-    for(int bi = 0; bi < print_limit; bi++){
-      fprintf(stderr, "  bi=%d: Re=%.6f Im=%.6f\n", bi, out[bi].real(), out[bi].imag());
-    }
-  }
-  */
-  // ----------------------------------------------------------------
-
-  if(m_in_allocated)
-    fftw_free(m_in);
-  fftw_free(m_out);
+  free(raw_out);
+  free(m_in);
 
   return out;
 }
