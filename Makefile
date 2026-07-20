@@ -2,7 +2,7 @@ CXX = c++ -O
 # CXX += -g -fsanitize=address
 # CXX = g++9 -O3
 FLAGS = -std=c++17 -I/opt/local/include -I/usr/local/include -I/opt/local/include/libairspyhf -I/usr/include/libairspyhf
-LIBS = -L/opt/local/lib -L/usr/local/lib -lfftw3 -lsndfile
+LIBS = -L/opt/local/lib -L/usr/local/lib -lsndfile
 
 MOREC = 
 MOREH = 
@@ -25,7 +25,7 @@ MOREH =
 # LIBS += -lliquid
 
 ft8mon: ft8.cc kiss_fft.c kiss_fftr.c ft8mon.cc snd.cc libldpc.c osd.cc unpack.cc util.cc fft.cc cloudsdr.h cloudsdr.cc $(MOREC) $(MOREH)
-	$(CXX) $(FLAGS) ft8mon.cc ft8.cc kiss_fft.c kiss_fftr.c unpack.cc osd.cc snd.cc util.cc fft.cc libldpc.c cloudsdr.cc $(MOREC) -o ft8mon $(LIBS) -lportaudio -pthread
+	$(CXX) $(FLAGS) ft8mon.cc ft8.cc kiss_fft.c kiss_fftr.c unpack.cc osd.cc snd.cc util.cc fft.cc libldpc.c cloudsdr.cc $(MOREC) -o ft8mon $(LIBS) -lportaudio 
 
 clean:
 	rm -f ft8mon

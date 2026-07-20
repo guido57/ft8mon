@@ -29,6 +29,7 @@ volatile int cycle_count;
 time_t saved_cycle_start;
 std::map<std::string,bool> cycle_already;
 
+
 double start_now;
 int count = 1;
 
@@ -92,9 +93,6 @@ main(int argc, char *argv[])
 {
   int hints[2] = { 2, 0 }; // CQ
   double budget = 5; // compute for this many seconds per cycle
-
-  extern int fftw_type;
-  fftw_type = FFTW_ESTIMATE; // rather than FFTW_MEASURE
 
   extern int nthreads;
   nthreads = 1; // 4=multi-core 1=one core
@@ -173,8 +171,7 @@ main(int argc, char *argv[])
             hints, hints, budget, budget, hcb,
             0, (struct cdecode *) 0);
     }
-    extern void fft_stats();
-    // fft_stats();
+    // Clean up KISS FFT cache before exiting to prevent memory leaks
   } else if(argc == 2 && strcmp(argv[1], "-list") == 0){
     snd_list();
   } else {

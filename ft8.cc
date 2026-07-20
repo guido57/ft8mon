@@ -94,7 +94,6 @@ double coarse_all = -1;
 int second_count = 3;
 int soft_phase_win = 2;
 double subtract_ramp = 0.11;
-extern int fftw_type; // fft.cc. MEASURE=0, ESTIMATE=64, PATIENT=32
 int soft_ones = 2;
 int soft_pairs = 1;
 int soft_triples = 1;
@@ -437,8 +436,6 @@ public:
   std::vector<std::complex<double>> hack_bins_;
   std::vector<cdecode> prevdecs_;
 
-  Plan *plan32_;
-
   FT8(const std::vector<double> &samples,
       double min_hz,
       double max_hz,
@@ -470,7 +467,6 @@ public:
     hack_off_ = -1;
     hack_len_ = -1;
 
-    plan32_ = 0;
   }
 
   ~FT8() {
@@ -712,7 +708,7 @@ void
 go(int npasses)
 {
   // cache to avoid cost of fftw planner mutex.
-  plan32_ = get_plan(32, "cache32");
+  // plan32_ = get_plan(32, "cache32");
     
   if(0){
     fprintf(stderr, "go: %.0f .. %.0f, %.0f, rate=%d\n",
@@ -948,7 +944,7 @@ one_strength(const std::vector<double> &samples200, double hz, int off)
   for(int which = 0; which < 3; which++){
     int start = starts[which];
     for(int si = 0; si < 7; si++){
-      auto fft = one_fft(samples200, off+(si+start)*32, 32, "one_strength", plan32_);
+      auto fft = one_fft(samples200, off+(si+start)*32, 32, "one_strength", 0);
       for(int bi = 0; bi < 8; bi++){
         double x = std::abs(fft[bin0+bi]);
         if(bi == costas[si]){
@@ -3027,6 +3023,7 @@ std::mutex FT8::cb_mu_;
 //
 // Python calls these.
 //
+
 void
 entry(double xsamples[], int nsamples, int start, int rate,
       double min_hz,
@@ -3058,41 +3055,26 @@ entry(double xsamples[], int nsamples, int start, int rate,
   if(max_hz > rate/2){
     max_hz = rate/2;
   }
-  double per = (max_hz - min_hz) / nthreads;
 
-  std::vector<FT8 *> thv;
+  // ESP32-S3 Single-Threaded Execution:
+  // Instead of slicing the frequency band into chunks for multiple threads,
+  // we just process the entire requested frequency range in one go.
+  min_hz = std::max(min_hz, 0.0);
+  max_hz = std::min(max_hz, (rate / 2.0) - 50);
 
-  for(int i = 0; i < nthreads; i++){
-    double hz0 = min_hz + i * per;
-    if(i > 0 || overlap_edges)
-      hz0 -= overlap;
-    
-    double hz1 = min_hz + (i + 1) * per;
-    if(i != nthreads-1 || overlap_edges)
-      hz1 += overlap;
+  FT8 *ft8 = new FT8(samples,
+                     min_hz, max_hz,
+                     start, rate,
+                     hints1, hints2,
+                     deadline, final_deadline, cb,
+                     prevdecs);
 
-    hz0 = std::max(hz0, 0.0);
-    hz1 = std::min(hz1, (rate / 2.0) - 50);
+  int npasses = nprevdecs > 0 ? npasses_two : npasses_one;
 
-    FT8 *ft8 = new FT8(samples,
-                       hz0, hz1,
-                       start, rate,
-                       hints1, hints2,
-                       deadline, final_deadline, cb,
-                       prevdecs);
+  // Run directly. No threads, no joins, no mutexes!
+  ft8->go(npasses);
 
-    int npasses = nprevdecs > 0 ? npasses_two : npasses_one;
-
-    ft8->th_ = new std::thread( [ ft8, npasses ] () { ft8->go(npasses); } );
-
-    thv.push_back(ft8);
-  }
-
-  for(int i = 0; i < (int) thv.size(); i++){
-    thv[i]->th_->join();
-    delete thv[i]->th_;
-    delete thv[i];
-  }
+  delete ft8;
 }
 
 double
@@ -3154,7 +3136,6 @@ set(char *param, char *val)
      { "coarse_strength_how", &coarse_strength_how, 0 },
      { "coarse_all", &coarse_all, 1 },
      { "second_count", &second_count, 0 },
-     { "fftw_type", &fftw_type, 0 },
      { "soft_phase_win", &soft_phase_win, 0 },
      { "subtract_ramp", &subtract_ramp, 1 },
      { "soft_pairs", &soft_pairs, 0 },

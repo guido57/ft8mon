@@ -7,12 +7,7 @@
 #include <sys/stat.h>
 #include "util.h"
 
-// MEASURE=0, ESTIMATE=64, PATIENT=32
-int fftw_type = FFTW_ESTIMATE;
 
-#include "kiss_fft.h"
-#include "kiss_fftr.h"
-#include <map>
 #include <set> 
 
 // --- ISOLATED KISS FFT CACHE (With pre-allocated ESP32-friendly buffers) ---
@@ -42,165 +37,103 @@ struct KissPlan {
     if(raw_out) free(raw_out);
   }
 };
-
-static std::mutex kiss_mu;
-static std::map<int, KissPlan*> kiss_fwd_cache;
-
-static kiss_fftr_cfg get_kiss_fwd(int n) {
-  kiss_mu.lock();
-  if(kiss_fwd_cache.count(n) == 0) {
-    kiss_fwd_cache[n] = new KissPlan(n);
-  }
-  KissPlan *kp = kiss_fwd_cache[n];
-  kiss_mu.unlock();
-  return kp->cfg;
+// ----------------------------------------------
+// --- THREAD-FREE, SELF-CLEANING KISS FFT CACHE ---
+static std::map<int, KissPlan*>& get_kiss_cache() {
+  static std::map<int, KissPlan*> cache;
+  return cache;
 }
-// ------------------------------
+
+// Cache for Complex-to-Complex (C2C) KISS FFTs
+struct KissC2CPlan {
+  kiss_fft_cfg cfg;
+  kiss_fft_cpx *buf_in;
+  kiss_fft_cpx *buf_out;
+  
+  KissC2CPlan(int n) {
+    cfg = kiss_fft_alloc(n, 0, NULL, NULL); // 0 = forward FFT
+    buf_in = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * n);
+    buf_out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * n);
+    assert(cfg && buf_in && buf_out);
+  }
+  
+  ~KissC2CPlan() {
+    if(cfg) kiss_fft_free(cfg);
+    if(buf_in) free(buf_in);
+    if(buf_out) free(buf_out);
+  }
+};
+
+static std::map<int, KissC2CPlan*>& get_kiss_c2c_cache() {
+  static std::map<int, KissC2CPlan*> cache;
+  return cache;
+}
+
+// Cache for Inverse Complex-to-Complex KISS FFTs
+struct KissC2CIPlan {
+  kiss_fft_cfg cfg;
+  kiss_fft_cpx *buf_in;
+  kiss_fft_cpx *buf_out;
+  
+  KissC2CIPlan(int n) {
+    cfg = kiss_fft_alloc(n, 1, NULL, NULL); // 1 = INVERSE FFT
+    buf_in = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * n);
+    buf_out = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * n);
+    assert(cfg && buf_in && buf_out);
+  }
+  
+  ~KissC2CIPlan() {
+    if(cfg) kiss_fft_free(cfg);
+    if(buf_in) free(buf_in);
+    if(buf_out) free(buf_out);
+  }
+};
+
+static std::map<int, KissC2CIPlan*>& get_kiss_c2ci_cache() {
+  static std::map<int, KissC2CIPlan*> cache;
+  return cache;
+}
+
+// Cache for Inverse Complex-to-Real KISS FFTs (kiss_fftri)
+struct KissIFFTRPlan {
+  kiss_fftr_cfg cfg;
+  kiss_fft_cpx *buf_in;
+  float *buf_out;
+  
+  KissIFFTRPlan(int n) {
+    cfg = kiss_fftr_alloc(n, 1, NULL, NULL); // 1 = INVERSE
+    buf_in = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * ((n/2) + 1));
+    buf_out = (float*)malloc(sizeof(float) * n);
+    assert(cfg && buf_in && buf_out);
+  }
+  
+  ~KissIFFTRPlan() {
+    if(cfg) kiss_fftr_free(cfg);
+    if(buf_in) free(buf_in);
+    if(buf_out) free(buf_out);
+  }
+};
+
+static std::map<int, KissIFFTRPlan*>& get_kiss_ifft_cache() {
+  static std::map<int, KissIFFTRPlan*> cache;
+  return cache;
+}
+// ----------------------------------------------
+
 
 #define TIMING 0
 
-// a cached fftw plan, for both of:
-// fftw_plan_dft_r2c_1d(n, m_in, m_out, FFTW_ESTIMATE);
-// fftw_plan_dft_c2r_1d(n, m_in, m_out, FFTW_ESTIMATE);
-class Plan {
-public:
-  int n_;
-  int type_;
 
-  //
-  // real -> complex
-  //
-  fftw_complex *c_; // (n_ / 2) + 1 of these
-  double *r_; // n_ of these
-  fftw_plan fwd_; // forward plan
-  fftw_plan rev_; // reverse plan
-
-  //
-  // complex -> complex
-  //
-  fftw_complex *cc1_; // n
-  fftw_complex *cc2_; // n
-  fftw_plan cfwd_; // forward plan
-  fftw_plan crev_; // reverse plan
-
-  // how much CPU time spent in FFTs that use this plan.
-#if TIMING
-  double time_;
-#endif
-  const char *why_;
-  int uses_;
-};
-
-static std::mutex plansmu;
-static Plan *plans[1000];
-static int nplans;
-static int plan_master_pid = 0;
-
-Plan *
-get_plan(int n, const char *why)
-{
-  // cache fftw plans in the parent process,
-  // so they will already be there for fork()ed children.
-
-  plansmu.lock();
-  
-  if(plan_master_pid == 0){
-    plan_master_pid = getpid();
-  }
-    
-  for(int i = 0; i < nplans; i++){
-    if(plans[i]->n_ == n
-       && plans[i]->type_ == fftw_type
-#if TIMING
-       && strcmp(plans[i]->why_, why) == 0
-#endif
-       ){
-      Plan *p = plans[i];
-      p->uses_ += 1;
-      plansmu.unlock();
-      return p;
-    }
-  }
-
-  double t0 = now();
-
-  // fftw_make_planner_thread_safe();
-
-  // the fftw planner is not thread-safe.
-  // can't rely on plansmu because both ft8.so
-  // and snd.so may be using separate copies of fft.cc.
-  // the lock file really should be per process.
-  int lockfd = creat("/tmp/fft-plan-lock", 0666);
-  assert(lockfd >= 0);
-  fchmod(lockfd, 0666);
-  int lockret = flock(lockfd, LOCK_EX);
-  assert(lockret == 0);
-
-  fftw_set_timelimit(5);
-
-  //
-  // real -> complex
-  //
-
-  Plan *p = new Plan;
-  
-  p->n_ = n;
-#if TIMING
-  p->time_ = 0;
-#endif
-  p->uses_ = 1;
-  p->why_ = why;
-  p->r_ = (double*) fftw_malloc(n * sizeof(double));
-  assert(p->r_);
-  p->c_ = (fftw_complex*) fftw_malloc(((n/2)+1) * sizeof(fftw_complex));
-  assert(p->c_);
-  
-  // FFTW_ESTIMATE
-  // FFTW_MEASURE
-  // FFTW_PATIENT
-  // FFTW_EXHAUSTIVE
-  int type = fftw_type;
-  if(getpid() != plan_master_pid){
-    type = FFTW_ESTIMATE;
-  }
-  p->type_ = type;
-  p->fwd_ = fftw_plan_dft_r2c_1d(n, p->r_, p->c_, type);
-  assert(p->fwd_);
-  p->rev_ = fftw_plan_dft_c2r_1d(n, p->c_, p->r_, type);
-  assert(p->rev_);
-  
-  //
-  // complex -> complex
-  //
-  p->cc1_ = (fftw_complex*) fftw_malloc(n * sizeof(fftw_complex));
-  assert(p->cc1_);
-  p->cc2_ = (fftw_complex*) fftw_malloc(n * sizeof(fftw_complex));
-  assert(p->cc2_);
-  p->cfwd_ = fftw_plan_dft_1d(n, p->cc1_, p->cc2_, FFTW_FORWARD, type);
-  assert(p->cfwd_);
-  p->crev_ = fftw_plan_dft_1d(n, p->cc2_, p->cc1_, FFTW_BACKWARD, type);
-  assert(p->crev_);
-
-  flock(lockfd, LOCK_UN);
-  close(lockfd);
-
-  assert(nplans+1 < 1000);
-  
-  plans[nplans] = p;
-  __sync_synchronize();
-  nplans += 1;
-
-  if(0 && getpid() == plan_master_pid){
-    double t1 = now();
-    fprintf(stderr, "miss pid=%d master=%d n=%d t=%.3f total=%d type=%d, %s\n",
-            getpid(), plan_master_pid, n, t1 - t0, nplans, type, why);
-  }
-
-  plansmu.unlock();
-
-  return p;
-}
-
+//
+// do just one FFT on samples[i0..i0+block]
+// real inputs, complex outputs.
+// output has (block / 2) + 1) points.
+//
+//
+// do just one FFT on samples[i0..i0+block]
+// real inputs, complex outputs.
+// output has (block / 2) + 1) points.
+//
 //
 // do just one FFT on samples[i0..i0+block]
 // real inputs, complex outputs.
@@ -210,6 +143,7 @@ std::vector<std::complex<double>>
 one_fft(const std::vector<double> &samples, int i0, int block,
         const char *why, Plan *p)
 {
+  (void)p; // Silence unused parameter warning (leftover from FFTW)
   assert(i0 >= 0);
   assert(block > 1);
   
@@ -219,27 +153,24 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   // ==========================================
   // KISS FFT (TRULY allocate once and reuse!)
   // ==========================================
-  kiss_mu.lock();
-  if(kiss_fwd_cache.count(block) == 0) {
-    kiss_fwd_cache[block] = new KissPlan(block);
+  std::map<int, KissPlan*>& cache = get_kiss_cache();
+  if(cache.count(block) == 0) {
+    cache[block] = new KissPlan(block);
   }
-  KissPlan *kp = kiss_fwd_cache[block];
-  kiss_mu.unlock();
+  KissPlan *kp = cache[block];
 
-  // NO MORE MALLOC! Just use the buffers attached to the plan.
   float *m_in = kp->m_in;
-  char *raw_out = kp->raw_out;
+  kiss_fft_cpx *cpx_out = (kiss_fft_cpx *)kp->raw_out;
 
   for(int i = 0; i < block; i++){
     m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
   }
 
-  kiss_fftr(kp->cfg, m_in, (kiss_fft_cpx*)raw_out);
+  kiss_fftr(kp->cfg, m_in, cpx_out);
 
   std::vector<std::complex<double>> out(nbins);
   for(int bi = 0; bi < nbins; bi++){
-    float *f_ptr = (float*)(raw_out + bi * 8);
-    out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
+    out[bi] = std::complex<double>((double)cpx_out[bi].r, (double)cpx_out[bi].i);
   }
 
   return out;
@@ -265,16 +196,16 @@ ffts(const std::vector<double> &samples, int i0, int block, const char *why)
   }
 
   // ==========================================
-  // KISS FFT (Optimized for ESP32: allocate once, reuse!)
+  // KISS FFT (Using pre-allocated KissPlan)
   // ==========================================
-  kiss_fftr_cfg kiss_cfg = get_kiss_fwd(block);
-  assert(kiss_cfg);
+  std::map<int, KissPlan*>& cache = get_kiss_cache();
+  if(cache.count(block) == 0) {
+    cache[block] = new KissPlan(block);
+  }
+  KissPlan *kp = cache[block];
 
-  // Allocate buffers ONCE and reuse them for the whole loop
-  float *m_in = (float *) malloc(sizeof(float) * block);
-  int out_byte_size = nbins * 8;
-  char *raw_out = (char *) malloc(out_byte_size);
-  assert(m_in && raw_out);
+  float *m_in = kp->m_in;
+  kiss_fft_cpx *cpx_out = (kiss_fft_cpx *)kp->raw_out;
 
   for(int si = 0; si < nblocks; si++){
     int off = i0 + si * block;
@@ -282,21 +213,21 @@ ffts(const std::vector<double> &samples, int i0, int block, const char *why)
       m_in[i] = (off + i < nsamples) ? (float)samples[off + i] : 0.0f;
     }
 
-    kiss_fftr(kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
+    kiss_fftr(kp->cfg, m_in, cpx_out);
 
     for(int bi = 0; bi < nbins; bi++){
-      float *f_ptr = (float*)(raw_out + bi * 8);
-      bins[si][bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
+      bins[si][bi] = std::complex<double>((double)cpx_out[bi].r, (double)cpx_out[bi].i);
     }
   }
-
-  // Free once at the very end
-  free(raw_out);
-  free(m_in);
 
   return bins;
   // ==========================================
 }
+//
+// do just one FFT on samples[i0..i0+block]
+// real inputs, complex outputs.
+// output has block points.
+//
 
 //
 // do just one FFT on samples[i0..i0+block]
@@ -306,50 +237,34 @@ ffts(const std::vector<double> &samples, int i0, int block, const char *why)
 std::vector<std::complex<double>>
 one_fft_c(const std::vector<double> &samples, int i0, int block, const char *why)
 {
+  (void)why; // unused
   assert(i0 >= 0);
   assert(block > 1);
   
   int nsamples = samples.size();
 
-  Plan *p = get_plan(block, why);
-  fftw_plan m_plan = p->cfwd_;
-
-#if TIMING
-  double t0 = now();
-#endif
-
-  fftw_complex *m_in  = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
-  fftw_complex *m_out = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
-  assert(m_in && m_out);
-
+  std::map<int, KissC2CPlan*>& cache = get_kiss_c2c_cache();
+  if(cache.count(block) == 0) {
+    cache[block] = new KissC2CPlan(block);
+  }
+  KissC2CPlan *kp = cache[block];
+ 
   for(int i = 0; i < block; i++){
     if(i0 + i < nsamples){
-      m_in[i][0] = samples[i0 + i]; // real
+      kp->buf_in[i].r = (float)samples[i0 + i];
     } else {
-      m_in[i][0] = 0;
+      kp->buf_in[i].r = 0.0f;
     }
-    m_in[i][1] = 0; // imaginary
+    kp->buf_in[i].i = 0.0f; // imaginary part is zero
   }
 
-  fftw_execute_dft(m_plan, m_in, m_out);
+  kiss_fft(kp->cfg, kp->buf_in, kp->buf_out);
 
   std::vector<std::complex<double>> out(block);
-
   double norm = 1.0 / sqrt(block);
   for(int bi = 0; bi < block; bi++){
-    double re = m_out[bi][0];
-    double im = m_out[bi][1];
-    std::complex<double> c(re, im);
-    c *= norm;
-    out[bi] = c;
+    out[bi] = std::complex<double>((double)kp->buf_out[bi].r, (double)kp->buf_out[bi].i) * norm;
   }
-    
-  fftw_free(m_in);
-  fftw_free(m_out);
-
-#if TIMING
-  p->time_ += now() - t0;
-#endif
 
   return out;
 }
@@ -357,51 +272,35 @@ one_fft_c(const std::vector<double> &samples, int i0, int block, const char *why
 std::vector<std::complex<double>>
 one_fft_cc(const std::vector<std::complex<double>> &samples, int i0, int block, const char *why)
 {
+  (void)why; // unused
   assert(i0 >= 0);
   assert(block > 1);
   
   int nsamples = samples.size();
 
-  Plan *p = get_plan(block, why);
-  fftw_plan m_plan = p->cfwd_;
-
-#if TIMING
-  double t0 = now();
-#endif
-
-  fftw_complex *m_in  = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
-  fftw_complex *m_out = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
-  assert(m_in && m_out);
+  std::map<int, KissC2CPlan*>& cache = get_kiss_c2c_cache();
+  if(cache.count(block) == 0) {
+    cache[block] = new KissC2CPlan(block);
+  }
+  KissC2CPlan *kp = cache[block];
 
   for(int i = 0; i < block; i++){
     if(i0 + i < nsamples){
-      m_in[i][0] = samples[i0 + i].real();
-      m_in[i][1] = samples[i0 + i].imag();
+      kp->buf_in[i].r = (float)samples[i0 + i].real();
+      kp->buf_in[i].i = (float)samples[i0 + i].imag();
     } else {
-      m_in[i][0] = 0;
-      m_in[i][1] = 0;
+      kp->buf_in[i].r = 0.0f;
+      kp->buf_in[i].i = 0.0f;
     }
   }
 
-  fftw_execute_dft(m_plan, m_in, m_out);
+  kiss_fft(kp->cfg, kp->buf_in, kp->buf_out);
 
   std::vector<std::complex<double>> out(block);
-
-  //double norm = 1.0 / sqrt(block);
+  // Note: KISS FFT forward does not scale, matching FFTW's fftw_execute_dft behavior
   for(int bi = 0; bi < block; bi++){
-    double re = m_out[bi][0];
-    double im = m_out[bi][1];
-    std::complex<double> c(re, im);
-    //c *= norm;
-    out[bi] = c;
+    out[bi] = std::complex<double>((double)kp->buf_out[bi].r, (double)kp->buf_out[bi].i);
   }
-    
-  fftw_free(m_in);
-  fftw_free(m_out);
-
-#if TIMING
-  p->time_ += now() - t0;
-#endif
 
   return out;
 }
@@ -409,89 +308,58 @@ one_fft_cc(const std::vector<std::complex<double>> &samples, int i0, int block, 
 std::vector<std::complex<double>>
 one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why)
 {
+  (void)why; // unused
   int block = bins.size();
 
-  Plan *p = get_plan(block, why);
-  fftw_plan m_plan = p->crev_;
-
-#if TIMING
-  double t0 = now();
-#endif
-
-  fftw_complex *m_in = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
-  fftw_complex *m_out = (fftw_complex *) fftw_malloc(block * sizeof(fftw_complex));
-  assert(m_in && m_out);
+  std::map<int, KissC2CIPlan*>& cache = get_kiss_c2ci_cache();
+  if(cache.count(block) == 0) {
+    cache[block] = new KissC2CIPlan(block);
+  }
+  KissC2CIPlan *kp = cache[block];
 
   for(int bi = 0; bi < block; bi++){
-    double re = bins[bi].real();
-    double im = bins[bi].imag();
-    m_in[bi][0] = re;
-    m_in[bi][1] = im;
+    kp->buf_in[bi].r = (float)bins[bi].real();
+    kp->buf_in[bi].i = (float)bins[bi].imag();
   }
 
-  fftw_execute_dft(m_plan, m_in, m_out);
+  kiss_fft(kp->cfg, kp->buf_in, kp->buf_out);
 
   std::vector<std::complex<double>> out(block);
   double norm = 1.0 / sqrt(block);
   for(int i = 0; i < block; i++){
-    double re = m_out[i][0];
-    double im = m_out[i][1];
-    std::complex<double> c(re, im);
-    c *= norm;
-    out[i] = c;
+    out[i] = std::complex<double>((double)kp->buf_out[i].r, (double)kp->buf_out[i].i) * norm;
   }
-
-  fftw_free(m_in);
-  fftw_free(m_out);
-
-#if TIMING
-  p->time_ += now() - t0;
-#endif
 
   return out;
 }
-
 std::vector<double>
 one_ifft(const std::vector<std::complex<double>> &bins, const char *why)
 {
+  (void)why; // unused
   int nbins = bins.size();
   int block = (nbins - 1) * 2;
 
-  Plan *p = get_plan(block, why);
-  fftw_plan m_plan = p->rev_;
-
-#if TIMING
-  double t0 = now();
-#endif
-
-  fftw_complex *m_in = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) *
-                                                    ((p->n_ / 2) + 1));
-  double *m_out = (double *) fftw_malloc(sizeof(double) * p->n_);
+  std::map<int, KissIFFTRPlan*>& cache = get_kiss_ifft_cache();
+  if(cache.count(block) == 0) {
+    cache[block] = new KissIFFTRPlan(block);
+  }
+  KissIFFTRPlan *kp = cache[block];
 
   for(int bi = 0; bi < nbins; bi++){
-    double re = bins[bi].real();
-    double im = bins[bi].imag();
-    m_in[bi][0] = re;
-    m_in[bi][1] = im;
+    kp->buf_in[bi].r = (float)bins[bi].real();
+    kp->buf_in[bi].i = (float)bins[bi].imag();
   }
 
-  fftw_execute_dft_c2r(m_plan, m_in, m_out);
+  kiss_fftri(kp->cfg, kp->buf_in, kp->buf_out);
 
   std::vector<double> out(block);
+  double norm = 1.0 / (double)block; // <-- ADD THIS: Match FFTW's automatic scaling
   for(int i = 0; i < block; i++){
-    out[i] = m_out[i];
+    out[i] = (double)kp->buf_out[i] * norm; // <-- APPLY IT HERE
   }
-
-  fftw_free(m_in);
-  fftw_free(m_out);
-
-#if TIMING
-  p->time_ += now() - t0;
-#endif
 
   return out;
 }
-
 //
 // return the analytic signal for signal x,
 // just like scipy.signal.hilbert(), from which
@@ -561,20 +429,3 @@ hilbert_shift(const std::vector<double> &x, double hz0, double hz1, int rate)
   return ret;
 }
 
-void
-fft_stats()
-{
-  for(int i = 0; i < nplans; i++){
-    Plan *p = plans[i];
-    printf("%-13s %6d %9d %6.3f\n",
-           p->why_,
-           p->n_,
-           p->uses_,
-#if TIMING
-           p->time_
-#else
-           0.0
-#endif
-           );
-  }
-}

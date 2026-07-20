@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <complex>
-#include <fftw3.h>
+// #include <fftw3.h>
 
 class Plan;
 Plan *get_plan(int n, const char *why);
