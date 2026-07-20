@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "util.h"
+#include "kiss_fft.h"
+#include "kiss_fftr.h"
 
 // MEASURE=0, ESTIMATE=64, PATIENT=32
 int fftw_type = FFTW_ESTIMATE;
@@ -214,6 +216,68 @@ one_fft(const std::vector<double> &samples, int i0, int block,
     double im = m_out[bi][1];
     out[bi] = std::complex<double>(re, im);
   }
+
+    // ==========================================
+  // KISS FFT TEST: Intercept ONLY the 180000-point FFT
+  // ==========================================
+  if(block == 180000) {
+    int nbins = 90001; // (180000 / 2) + 1
+    
+    // 1. Create KISS FFT config
+    void *kiss_cfg = kiss_fftr_alloc(180000, 0, NULL, NULL);
+    assert(kiss_cfg);
+
+    // 2. Prepare input
+    float *m_in = (float *) malloc(sizeof(float) * 180000);
+    for(int i = 0; i < 180000; i++) {
+      m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
+    }
+
+    // 3. Allocate raw byte array for output (90001 bins * 8 bytes = 720KB)
+    int out_byte_size = nbins * 8; 
+    char *raw_out = (char *) malloc(out_byte_size);
+    assert(m_in && raw_out);
+
+    // 4. Execute KISS FFT
+    kiss_fftr((kiss_fftr_cfg)kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
+
+    // 5. Read raw bytes back as 4-byte floats
+    std::vector<std::complex<double>> out(nbins);
+    for(int bi = 0; bi < nbins; bi++){
+      float *f_ptr = (float*)(raw_out + bi * 8);
+      out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
+    }
+
+    // 6. Print comparison
+    fprintf(stderr, "KISS_180K out[] for block=180000, why=%s:\n", why);
+    for(int bi=0; bi<5; bi++) {
+       fprintf(stderr, "  bi=%d: Re=%.6f Im=%.6f\n", bi, out[bi].real(), out[bi].imag());
+    }
+
+    // 7. Clean up
+    free(raw_out);
+    free(m_in);
+    free(kiss_cfg);
+
+    return out;
+  }
+  // ==========================================
+  // END KISS FFT TEST
+  // ==========================================
+  
+  // --- GOLDEN PRINT FOR LARGE FFTs ---
+  if(block == 30000) {
+    static int printed_36k = 0;
+    if(printed_36k == 0) {
+      fprintf(stderr, "GOLDEN_36K out[] for block=%d, why=%s:\n", block, why);
+      for(int bi=0; bi<5; bi++) {
+         fprintf(stderr, "  bi=%d: Re=%.6f Im=%.6f\n", bi, out[bi].real(), out[bi].imag());
+      }
+      printed_36k = 1;
+    }
+  }
+  // --------------------------------------
+
 
   if(m_in_allocated)
     fftw_free(m_in);

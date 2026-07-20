@@ -29,6 +29,9 @@ volatile int cycle_count;
 time_t saved_cycle_start;
 std::map<std::string,bool> cycle_already;
 
+double start_now;
+int count = 1;
+
 //
 // a91 is 91 bits -- 77 plus the 14-bit CRC.
 //
@@ -55,7 +58,9 @@ hcb(int *a91, double hz0, double hz1, double off,
   struct tm result;
   gmtime_r(&saved_cycle_start, &result);
 
-  printf("%02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
+  printf("%.3f %d %02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
+         now() - start_now,
+         count++,
          result.tm_hour,
          result.tm_min,
          result.tm_sec,
@@ -161,6 +166,7 @@ main(int argc, char *argv[])
       // the .wav file should start at an even 15-second boundary.
       int rate;
       std::vector<double> s = readwav(argv[ii], rate);
+      start_now = now();
       entry(s.data(), s.size(), 0.5 * rate, rate,
             150,
             3600, // 2900,
