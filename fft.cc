@@ -6,12 +6,29 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "util.h"
-#include "kiss_fft.h"
-#include "kiss_fftr.h"
 
 // MEASURE=0, ESTIMATE=64, PATIENT=32
 int fftw_type = FFTW_ESTIMATE;
 
+#include "kiss_fft.h"
+#include "kiss_fftr.h"
+#include <map>
+#include <set> 
+
+// --- ISOLATED KISS FFT CACHE ---
+static std::mutex kiss_mu;
+static std::map<int, kiss_fftr_cfg> kiss_fwd_cache;
+
+static kiss_fftr_cfg get_kiss_fwd(int n) {
+  kiss_mu.lock();
+  if(kiss_fwd_cache.count(n) == 0) {
+    kiss_fwd_cache[n] = kiss_fftr_alloc(n, 0, NULL, NULL);
+  }
+  kiss_fftr_cfg cfg = kiss_fwd_cache[n];
+  kiss_mu.unlock();
+  return cfg;
+}
+// ------------------------------
 
 #define TIMING 0
 
@@ -162,6 +179,17 @@ get_plan(int n, const char *why)
 // real inputs, complex outputs.
 // output has (block / 2) + 1 points.
 //
+//
+// do just one FFT on samples[i0..i0+block]
+// real inputs, complex outputs.
+// output has (block / 2) + 1 points.
+//
+
+//
+// do just one FFT on samples[i0..i0+block]
+// real inputs, complex outputs.
+// output has (block / 2) + 1 points.
+//
 std::vector<std::complex<double>>
 one_fft(const std::vector<double> &samples, int i0, int block,
         const char *why, Plan *p)
@@ -172,6 +200,41 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   int nsamples = samples.size();
   int nbins = (block / 2) + 1;
 
+  // ==========================================
+  // KISS FFT INTERCEPTOR
+  // Add new block sizes here to test them safely!
+  // ==========================================
+  if(block == 180000 || block == 336 || block == 33600) {
+    void *kiss_cfg = kiss_fftr_alloc(block, 0, NULL, NULL);
+    assert(kiss_cfg);
+
+    float *m_in = (float *) malloc(sizeof(float) * block);
+    int out_byte_size = nbins * 8; 
+    char *raw_out = (char *) malloc(out_byte_size);
+    assert(m_in && raw_out);
+
+    for(int i = 0; i < block; i++) {
+      m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
+    }
+
+    kiss_fftr((kiss_fftr_cfg)kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
+
+    std::vector<std::complex<double>> out(nbins);
+    for(int bi = 0; bi < nbins; bi++){
+      float *f_ptr = (float*)(raw_out + bi * 8);
+      out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
+    }
+
+    free(raw_out);
+    free(m_in);
+    free(kiss_cfg);
+
+    return out;
+  }
+  // ==========================================
+  // END KISS FFT INTERCEPTOR
+  // ==========================================
+
   if(p){
     assert(p->n_ == block);
     p->uses_ += 1;
@@ -180,17 +243,12 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   }
   fftw_plan m_plan = p->fwd_;
 
-#if TIMING
-  double t0 = now();
-#endif
-
   assert((int) samples.size() - i0 >= block);
 
   int m_in_allocated = 0;
   double *m_in = (double*) samples.data() + i0;
 
   if((((unsigned long long)m_in) % 16) != 0){
-    // m_in must be on a 16-byte boundary for FFTW.
     m_in = (double *) fftw_malloc(sizeof(double) * p->n_);
     assert(m_in);
     m_in_allocated = 1;
@@ -217,75 +275,24 @@ one_fft(const std::vector<double> &samples, int i0, int block,
     out[bi] = std::complex<double>(re, im);
   }
 
-    // ==========================================
-  // KISS FFT TEST: Intercept ONLY the 180000-point FFT
-  // ==========================================
-  if(block == 180000) {
-    int nbins = 90001; // (180000 / 2) + 1
-    
-    // 1. Create KISS FFT config
-    void *kiss_cfg = kiss_fftr_alloc(180000, 0, NULL, NULL);
-    assert(kiss_cfg);
-
-    // 2. Prepare input
-    float *m_in = (float *) malloc(sizeof(float) * 180000);
-    for(int i = 0; i < 180000; i++) {
-      m_in[i] = (i0 + i < nsamples) ? (float)samples[i0 + i] : 0.0f;
-    }
-
-    // 3. Allocate raw byte array for output (90001 bins * 8 bytes = 720KB)
-    int out_byte_size = nbins * 8; 
-    char *raw_out = (char *) malloc(out_byte_size);
-    assert(m_in && raw_out);
-
-    // 4. Execute KISS FFT
-    kiss_fftr((kiss_fftr_cfg)kiss_cfg, m_in, (kiss_fft_cpx*)raw_out);
-
-    // 5. Read raw bytes back as 4-byte floats
-    std::vector<std::complex<double>> out(nbins);
-    for(int bi = 0; bi < nbins; bi++){
-      float *f_ptr = (float*)(raw_out + bi * 8);
-      out[bi] = std::complex<double>((double)f_ptr[0], (double)f_ptr[1]);
-    }
-
-    // 6. Print comparison
-    fprintf(stderr, "KISS_180K out[] for block=180000, why=%s:\n", why);
-    for(int bi=0; bi<5; bi++) {
-       fprintf(stderr, "  bi=%d: Re=%.6f Im=%.6f\n", bi, out[bi].real(), out[bi].imag());
-    }
-
-    // 7. Clean up
-    free(raw_out);
-    free(m_in);
-    free(kiss_cfg);
-
-    return out;
-  }
-  // ==========================================
-  // END KISS FFT TEST
-  // ==========================================
-  
-  // --- GOLDEN PRINT FOR LARGE FFTs ---
-  if(block == 30000) {
-    static int printed_36k = 0;
-    if(printed_36k == 0) {
-      fprintf(stderr, "GOLDEN_36K out[] for block=%d, why=%s:\n", block, why);
-      for(int bi=0; bi<5; bi++) {
-         fprintf(stderr, "  bi=%d: Re=%.6f Im=%.6f\n", bi, out[bi].real(), out[bi].imag());
-      }
-      printed_36k = 1;
+  // --- DIAGNOSTIC PRINT (Commented out to prevent timeout) ---
+  /*
+  static std::set<std::string> seen_profiles;
+  std::string key = std::to_string(block) + "_" + why;
+  if(seen_profiles.count(key) == 0) {
+    seen_profiles.insert(key);
+    fprintf(stderr, "FFTW one_fft: block=%d, why=%s\n", block, why);
+    int print_limit = (nbins < 10) ? nbins : 10;
+    for(int bi = 0; bi < print_limit; bi++){
+      fprintf(stderr, "  bi=%d: Re=%.6f Im=%.6f\n", bi, out[bi].real(), out[bi].imag());
     }
   }
-  // --------------------------------------
-
+  */
+  // ----------------------------------------------------------------
 
   if(m_in_allocated)
     fftw_free(m_in);
   fftw_free(m_out);
-
-#if TIMING
-  p->time_ += now() - t0;
-#endif
 
   return out;
 }
