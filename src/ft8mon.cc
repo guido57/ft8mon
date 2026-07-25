@@ -58,8 +58,8 @@ void* operator new(size_t size) {
         throw std::bad_alloc();
     }
 
-    if(size > 100000) {
-        // printf("Large allocation: %zu bytes at %p\n", size, p);
+    if(size > 1000000) {
+        // printf("operator new: large allocation: %zu bytes at %p\n", size, p);
     } else {
         // printf("Linux allocation: %zu bytes at %p\n", size, p);
     }
@@ -70,7 +70,7 @@ void* operator new(size_t size) {
 
 
 void operator delete(void* p) noexcept {
-    // printf("Linux free: %p\n", p);
+    //printf("Linux free large allocation: %p\n", p);
     std::free(p);
 }
 
@@ -91,7 +91,7 @@ void* operator new[](size_t size) {
 
 
 void operator delete[](void* p) noexcept {
-    // printf("Linux array free: %p\n", p);
+    printf("Linux array free: %p\n", p);
     std::free(p);
 }
 
