@@ -423,7 +423,7 @@ public:
 
   double min_hz_;
   double max_hz_;
-  std::vector<double> samples_;  // input to each pass
+  std::vector<double> &samples_;  // input to each pass
   //std::vector<double> nsamples_; // subtract from here
 
   int start_; // sample number of 0.5 seconds into samples[]
@@ -446,20 +446,18 @@ public:
   double hack_1_;
   const double *hack_data_;
   std::vector<std::complex<double>> hack_bins_;  // for debugging, to see what the FFT looks like
-  std::vector<cdecode> prevdecs_;                // it holds previous decodes
-
-  FT8(const std::vector<double> &samples,
+  
+  FT8(std::vector<double> &samples,
       double min_hz,
       double max_hz,
       int start, int rate,
       int hints1[], int hints2[], double deadline,
-      double final_deadline, cb_t cb,
-      std::vector<cdecode> prevdecs)
+      double final_deadline, cb_t cb
+    
+    ): samples_(samples)
   {
-    samples_ = samples;
     min_hz_ = min_hz;
     max_hz_ = max_hz;
-    prevdecs_ = prevdecs;
     start_ = start;
     rate_ = rate;
     deadline_ = deadline;
@@ -827,10 +825,10 @@ go(int npasses)
       down_hz_ = delta_hz; // to adjust hz for Python.
       min_hz_ -= down_hz_;
       max_hz_ -= down_hz_;
-      for(int i = 0; i < (int) prevdecs_.size(); i++){
-        prevdecs_[i].hz0 -= delta_hz;
-        prevdecs_[i].hz1 -= delta_hz;
-      }
+      // for(int i = 0; i < (int) prevdecs_.size(); i++){
+      //   prevdecs_[i].hz0 -= delta_hz;
+      //   prevdecs_[i].hz1 -= delta_hz;
+      // }
     }
     assert(max_hz_ + 50 < nrate / 2);
     assert(min_hz_ >= 0);
@@ -860,11 +858,18 @@ go(int npasses)
             need,
             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     std::vector<double> v(need);
+    printf("go: allocated vector<double v> of size %lu bytes\n", v.size());
     for(int i = 0; i < need; i++){
       //v[i] = 0;
       v[i] = samples_[rnd()]; 
     }
+    printf("go: adding %d random samples to the end of samples_ (having size %lu capacity %lu), PSRAM free=%d\n",
+            need, samples_.size(), samples_.capacity(),
+            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     samples_.insert(samples_.end(), v.begin(), v.end());
+    printf("go: after adding samples_.size() is %lu capacity is %lu, PSRAM free=%d\n",
+            samples_.size(), samples_.capacity(),
+            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
   
   int si0 = (start_ - tminus*rate_) / block;
@@ -872,38 +877,6 @@ go(int npasses)
     si0 = 0;
   int si1 = (start_ + tplus*rate_) / block;
 
-  // a copy from which to subtract.
-  // nsamples_ = samples_; 
-
-  int any = 0;
-  printf("cycle on prevdecs_.size() = %d\n", (int) prevdecs_.size());  
-  for(int i = 0; i < (int) prevdecs_.size(); i++){
-    auto d = prevdecs_[i];
-    if(d.hz0 >= min_hz_ && d.hz0 <= max_hz_){
-      // reconstruct correct 79 symbols from LDPC output.
-      std::vector<int> re79 = recode(d.bits);
-
-      // fine up hz/off again now that we have more samples
-      double best_hz = (d.hz0 + d.hz1) / 2.0;
-      double best_off = d.off; // 
-
-      printf("go: prevdecs_[%d] calling search_both_known samples_size()=%d rate_=%d best_hz=%.2f best_off=%.2f\n",
-              i, (int) samples_.size(), rate_, best_hz, best_off);
-      search_both_known(samples_, rate_, re79,
-                        best_hz,
-                        best_off,
-                        best_hz, best_off);
-      printf("go: prevdecs_[%d] search_both_known returned best_hz=%.2f best_off=%.2f\n",
-              i, best_hz, best_off);
-
-      // subtract from nsamples_.
-      subtract(re79, best_hz, best_hz, best_off);
-      any += 1;
-    }
-  }
-  if(any){
-    // samples_ = nsamples_;
-  }
 
   printf("rate=%d\n", rate_);
   printf("block=%d\n", block);
@@ -913,7 +886,7 @@ go(int npasses)
 
   printf("go: cycle on npasses=%d\n", npasses);
   for(pass_ = 0; pass_ < npasses; pass_++){
-    printf("======== PASS %d OF %d ==================\n", pass_ + 1, npasses);
+    printf("\r\n======== PASS %d OF %d ==================\r\n\r\n", pass_ + 1, npasses);
     double total_remaining = deadline_ - now();
     double remaining = total_remaining / (npasses - pass_);
     if(pass_ == 0){
@@ -3297,8 +3270,6 @@ entry(float xsamples[], int nsamples, int start, int rate,
       int hints1[],
       int hints2[],
       double time_left, double total_time_left, cb_t cb
-      // int ,
-      // struct cdecode *xprevdecs
       )
 {
   double t0 = now();
@@ -3308,12 +3279,13 @@ entry(float xsamples[], int nsamples, int start, int rate,
   // decodes from previous runs, for subtraction.
   printf("entry: %d samples, %.1f-%.1f hz, %.1f sec left, %.1f total\n",
          nsamples, min_hz, max_hz, time_left, total_time_left);
-  std::vector<cdecode> prevdecs;
+  // std::vector<cdecode> prevdecs;
   // for(int i = 0; i < nprevdecs; i++){
   //   prevdecs.push_back(xprevdecs[i]);
   // }
 
-  std::vector<double> samples(nsamples);
+  // std::vector<double> samples(nsamples);
+  std::vector<double> samples(192000);
   for(int i = 0; i < nsamples; i++){
     samples[i] = xsamples[i];
   }
@@ -3336,8 +3308,8 @@ entry(float xsamples[], int nsamples, int start, int rate,
                      min_hz, max_hz,
                      start, rate,
                      hints1, hints2,
-                     deadline, final_deadline, cb,
-                     prevdecs);
+                     deadline, final_deadline, cb
+                    );
 
   // int npasses = nprevdecs > 0 ? npasses_two : npasses_one;
   int npasses = npasses_one; // For ESP32-S3, we will only run one pass for simplicity.  
