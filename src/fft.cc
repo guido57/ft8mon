@@ -127,17 +127,6 @@ static std::map<int, KissIFFTRPlan*>& get_kiss_ifft_cache() {
 
 #define TIMING 0
 
-
-//
-// do just one FFT on samples[i0..i0+block]
-// real inputs, complex outputs.
-// output has (block / 2) + 1) points.
-//
-//
-// do just one FFT on samples[i0..i0+block]
-// real inputs, complex outputs.
-// output has (block / 2) + 1) points.
-//
 //
 // do just one FFT on samples[i0..i0+block]
 // real inputs, complex outputs.
@@ -162,7 +151,8 @@ one_fft(const std::vector<double> &samples, int i0, int block,
     printf("one_fft: allocating KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cache[block] = new KissPlan(block);
-    printf("one_fft: Allocated KissPlan for block size %d. PSRAM free=%d\n", block,
+    printf("one_fft: Allocated KissPlan for block size %d. PSRAM free=%d\n", 
+            block,
             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }else if( block > 10000){
     // printf("one_fft: Reusing KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
@@ -179,8 +169,13 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   }
 
   kiss_fftr(kp->cfg, m_in, cpx_out);
-
+  // printf("one_fft: allocating an array of complex<double> of size nbins=%d for reason %s and block size %d. PSRAM free=%d\n", 
+  //         nbins, why, block,
+  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   std::vector<std::complex<double>> out(nbins);
+  // printf("one_fft: filling the array with the results from cpx_out for reason %s and block size %d. PSRAM free=%d\n", 
+  //         why, block,
+  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   for(int bi = 0; bi < nbins; bi++){
     out[bi] = std::complex<double>((double)cpx_out[bi].r, (double)cpx_out[bi].i);
   }
