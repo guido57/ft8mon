@@ -8,17 +8,17 @@
 class Plan;
 Plan *get_plan(int n, const char *why);
 
-std::vector<std::complex<double>> 
-one_fft(const std::vector<double> &samples,
+std::vector<std::complex<float>> 
+one_fft(const std::vector<float> &samples,
                                           int i0, int block, const char *why,
                                           Plan *p);
 
-std::vector<double> one_ifft(const std::vector<std::complex<double>> &bins,
+std::vector<float> one_ifft(const std::vector<std::complex<float>> &bins,
                              const char *why);
 
 typedef std::vector< std::vector< std::complex<double> > > ffts_t;
 
-ffts_t ffts(const std::vector<double> &samples, int i0, int block, const char *why);
+ffts_t ffts(const std::vector<float> &samples, int i0, int block, const char *why);
 
 std::vector<std::complex<double>> one_fft_c(const std::vector<double> &samples,
                                             int i0, int block, const char *why);

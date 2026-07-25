@@ -59,7 +59,7 @@ void* operator new(size_t size) {
     }
 
     if(size > 1000000) {
-        // printf("operator new: large allocation: %zu bytes at %p\n", size, p);
+        printf("operator new: large allocation: %zu bytes at %p\n", size, p);
     } else {
         // printf("Linux allocation: %zu bytes at %p\n", size, p);
     }

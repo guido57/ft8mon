@@ -132,8 +132,8 @@ static std::map<int, KissIFFTRPlan*>& get_kiss_ifft_cache() {
 // real inputs, complex outputs.
 // output has (block / 2) + 1) points.
 //
-std::vector<std::complex<double>>
-one_fft(const std::vector<double> &samples, int i0, int block,
+std::vector<std::complex<float>>
+one_fft(const std::vector<float> &samples, int i0, int block,
         const char *why, Plan *p)
 {
   (void)p; // Silence unused parameter warning (leftover from FFTW)
@@ -172,12 +172,12 @@ one_fft(const std::vector<double> &samples, int i0, int block,
   // printf("one_fft: allocating an array of complex<double> of size nbins=%d for reason %s and block size %d. PSRAM free=%d\n", 
   //         nbins, why, block,
   //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  std::vector<std::complex<double>> out(nbins);
+  std::vector<std::complex<float>> out(nbins);
   // printf("one_fft: filling the array with the results from cpx_out for reason %s and block size %d. PSRAM free=%d\n", 
-  //         why, block,
-  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+          // why, block,
+          // heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   for(int bi = 0; bi < nbins; bi++){
-    out[bi] = std::complex<double>((double)cpx_out[bi].r, (double)cpx_out[bi].i);
+    out[bi] = std::complex<float>((float)cpx_out[bi].r, (float)cpx_out[bi].i);
   }
 
   return out;
@@ -189,7 +189,7 @@ one_fft(const std::vector<double> &samples, int i0, int block,
 // bins[time][frequency]
 //
 ffts_t
-ffts(const std::vector<double> &samples, int i0, int block, const char *why)
+ffts(const std::vector<float> &samples, int i0, int block, const char *why)
 {
   assert(i0 >= 0);
   assert(block > 1 && (block % 2) == 0);
@@ -351,8 +351,8 @@ one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why)
 
   return out;
 }
-std::vector<double>
-one_ifft(const std::vector<std::complex<double>> &bins, const char *why)
+std::vector<float>
+one_ifft(const std::vector<std::complex<float>> &bins, const char *why)
 {
   (void)why; // unused
   int nbins = bins.size();
@@ -378,7 +378,7 @@ one_ifft(const std::vector<std::complex<double>> &bins, const char *why)
 
   kiss_fftri(kp->cfg, kp->buf_in, kp->buf_out);
 
-  std::vector<double> out(block);
+  std::vector<float> out(block);
   double norm = 1.0 / (double)block; // <-- ADD THIS: Match FFTW's automatic scaling
   for(int i = 0; i < block; i++){
     out[i] = (double)kp->buf_out[i] * norm; // <-- APPLY IT HERE

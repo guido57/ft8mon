@@ -423,7 +423,7 @@ public:
 
   double min_hz_;
   double max_hz_;
-  std::vector<double> &samples_;  // input to each pass
+  std::vector<float> &samples_;  // input to each pass
   //std::vector<double> nsamples_; // subtract from here
 
   int start_; // sample number of 0.5 seconds into samples[]
@@ -444,10 +444,10 @@ public:
   int hack_len_;
   double hack_0_;
   double hack_1_;
-  const double *hack_data_;
-  std::vector<std::complex<double>> hack_bins_;  // for debugging, to see what the FFT looks like
+  const float *hack_data_;
+  std::vector<std::complex<float>> hack_bins_;  // for debugging, to see what the FFT looks like
   
-  FT8(std::vector<double> &samples,
+  FT8(std::vector<float> &samples,
       double min_hz,
       double max_hz,
       int start, int rate,
@@ -639,8 +639,8 @@ coarse(const ffts_t &bins, int si0, int si1)
 // but first filter to that range.
 // sets delta_hz to hz moved down.
 //
-std::vector<double>
-reduce_rate(const std::vector<double> &a, double hz0, double hz1,
+std::vector<float>
+reduce_rate(const std::vector<float> &a, double hz0, double hz1,
             int arate, int brate,
             double &delta_hz)
 {
@@ -669,7 +669,7 @@ reduce_rate(const std::vector<double> &a, double hz0, double hz1,
   printf("reduce_rate: getting %d bins1 from one_fft. PSRAM free=%d\n",
           alen,
           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  std::vector<std::complex<double>> bins1 = one_fft(a, 0, alen,
+  std::vector<std::complex<float>> bins1 = one_fft(a, 0, alen,
                                                     "reduce_rate1", 0);
   int nbins1 = bins1.size();
 
@@ -713,7 +713,7 @@ reduce_rate(const std::vector<double> &a, double hz0, double hz1,
   printf("reduce_rate: creating %d bbins. PSRAM free=%d\n",
           blen,
           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  std::vector<std::complex<double>> bbins(blen / 2 + 1);
+  std::vector<std::complex<float>> bbins(blen / 2 + 1);
   for(int i = 0; i < (int) bbins.size(); i++){
     if(delta > 0){
       bbins[i] = bins1[i + delta];
@@ -725,7 +725,7 @@ reduce_rate(const std::vector<double> &a, double hz0, double hz1,
   // use ifft to reduce the rate.
   printf("reduce_rate: calling one_ifft. PSRAM free=%d\n",
           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  std::vector<double> vvv = one_ifft(bbins, "reduce_rate2");
+  std::vector<float> vvv = one_ifft(bbins, "reduce_rate2");
 
   delta_hz = delta * bin_hz;
 
@@ -908,7 +908,7 @@ go(int npasses)
     // and down_v7_f() to 200 sps.
     printf("go: calling one_fft on %d points for coarse search, PSRAM free=%d\n",
            (int) samples_.size(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    std::vector<std::complex<double>> bins = one_fft(samples_, 0, samples_.size(),
+    std::vector<std::complex<float>> bins = one_fft(samples_, 0, samples_.size(),
                                                      "go1", 0);
 
     // coarse_hz_n is the number of fractional hz shifts to try.   
@@ -916,7 +916,7 @@ go(int npasses)
     for(int hz_frac_i = 0; hz_frac_i < coarse_hz_n; hz_frac_i++){
       // shift down by hz_frac
       double hz_frac = hz_frac_i * (6.25 / coarse_hz_n);
-      std::vector<double> samples1;
+      std::vector<float> samples1;
       if(hz_frac_i == 0){
         samples1 = samples_;
       } else {
@@ -998,7 +998,7 @@ go(int npasses)
 // the signal starting at hz and off?
 //
 double
-one_strength(const std::vector<double> &samples200, double hz, int off)
+one_strength(const std::vector<float> &samples200, double hz, int off)
 {
   int bin0 = round(hz / 6.25);
 
@@ -1049,7 +1049,7 @@ one_strength(const std::vector<double> &samples200, double hz, int off)
 // decoded signal.
 //
 double
-one_strength_known(const std::vector<double> &samples,
+one_strength_known(const std::vector<float> &samples,
                    int rate,
                    const std::vector<int> &syms,
                    double hz, int off)
@@ -1107,7 +1107,7 @@ one_strength_known(const std::vector<double> &samples,
 }
 
 int
-search_time_fine(const std::vector<double> &samples200,
+search_time_fine(const std::vector<float> &samples200,
                  int off0, int offN,
                  double hz,
                  int gran,
@@ -1128,7 +1128,7 @@ search_time_fine(const std::vector<double> &samples200,
     // don't provoke random-length FFTs.
     return -1;
   }
-  std::vector<double> downsamples200 = shift200(samples200, off0, len, hz);
+  std::vector<float> downsamples200 = shift200(samples200, off0, len, hz);
 
   int best_off = -1;
   double best_sum = 0.0;
@@ -1147,7 +1147,7 @@ search_time_fine(const std::vector<double> &samples200,
 }
 
 int
-search_time_fine_known(const std::vector<std::complex<double>> &bins,
+search_time_fine_known(const std::vector<std::complex<float>> &bins,
                        int rate,
                        const std::vector<int> &syms,
                        int off0, int offN,
@@ -1162,7 +1162,7 @@ search_time_fine_known(const std::vector<std::complex<double>> &bins,
   double hz0 = round(hz / 6.25) * 6.25;
 
   // move hz to hz0, so it is centered in a symbol-sized bin.
-  std::vector<double> downsamples = fft_shift_f(bins, rate, hz - hz0);
+  std::vector<float> downsamples = fft_shift_f(bins, rate, hz - hz0);
 
   int best_off = -1;
   int block = blocksize(rate);
@@ -1191,7 +1191,7 @@ search_time_fine_known(const std::vector<std::complex<double>> &bins,
 // off0 +/- off_win in off_inc incremenents.
 //
 std::vector<Strength>
-search_both(const std::vector<double> &samples200,
+search_both(const std::vector<float> &samples200,
             double hz0, int hz_n, double hz_win,
             int off0, int off_n, int off_win)
 {
@@ -1226,7 +1226,7 @@ search_both(const std::vector<double> &samples200,
 // off0 +/- off_win in off_inc increments.
 // 
 void
-search_both_known(const std::vector<double> &samples,
+search_both_known(const std::vector<float> &samples,
                   int rate,
                   const std::vector<int> &syms,
                   double hz0,
@@ -1249,7 +1249,7 @@ search_both_known(const std::vector<double> &samples,
   int best_off = 0;
   double best_strength = 0;
 
-  std::vector<std::complex<double>> bins = one_fft(samples, 0, samples.size(), "stfk", 0);
+  std::vector<std::complex<float>> bins = one_fft(samples, 0, samples.size(), "stfk", 0);
 
   double hz_start, hz_inc, hz_end;
   if(third_hz_n > 1){
@@ -1288,11 +1288,11 @@ search_both_known(const std::vector<double> &samples,
 // surprisingly fast at 200 samples/second.
 // shifts *down* by hz.
 //
-std::vector<double>
-fft_shift(const std::vector<double> &samples, int off, int len,
+std::vector<float>
+fft_shift(const std::vector<float> &samples, int off, int len,
           int rate, double hz)
 {
-  std::vector<std::complex<double>> bins;
+  std::vector<std::complex<float>> bins;
 
   // horrible hack to avoid repeated FFTs on the same input.
   hack_mu_.lock();
@@ -1318,15 +1318,15 @@ fft_shift(const std::vector<double> &samples, int off, int len,
 //
 // shift down by hz.
 //
-std::vector<double>
-fft_shift_f(const std::vector<std::complex<double>> &bins, int rate, double hz)
+std::vector<float>
+fft_shift_f(const std::vector<std::complex<float>> &bins, int rate, double hz)
 {
   int nbins = bins.size();
   int len = (nbins - 1) * 2;
 
   double bin_hz = rate / (double) len;
   int down = round(hz / bin_hz);
-  std::vector<std::complex<double>> bins1(nbins);
+  std::vector<std::complex<float_t>> bins1(nbins);
   for(int i = 0; i < nbins; i++){
     int j = i + down;
     if(j >= 0 && j < nbins){
@@ -1335,14 +1335,14 @@ fft_shift_f(const std::vector<std::complex<double>> &bins, int rate, double hz)
       bins1[i] = 0;
     }
   }
-  std::vector<double> out = one_ifft(bins1, "fft_shift");
+  std::vector<float> out = one_ifft(bins1, "fft_shift");
   return out;
 }
 
 // shift the frequency by a fraction of 6.25,
 // to center hz on bin 4 (25 hz).
-std::vector<double>
-shift200(const std::vector<double> &samples200, int off, int len, double hz)
+std::vector<float>
+shift200(const std::vector<float> &samples200, int off, int len, double hz)
 {
   if(std::abs(hz - 25) < 0.001 && off == 0 && len == (int) samples200.size()){
     return samples200;
@@ -1354,7 +1354,7 @@ shift200(const std::vector<double> &samples200, int off, int len, double hz)
 
 // returns a mini-FFT of 79 8-tone symbols.
 ffts_t
-extract(const std::vector<double> &samples200, double hz, int off)
+extract(const std::vector<float> &samples200, double hz, int off)
 {
 
   ffts_t bins3 = ffts(samples200, off, 32, "extract");
@@ -2299,8 +2299,8 @@ decode(const double ll174[], int a174[], int use_osd, std::string &comment)
 // so that it's not a brick-wall filter, so that it
 // doesn't ring.
 //
-std::vector<std::complex<double>>
-fbandpass(const std::vector<std::complex<double>> &bins0,
+std::vector<std::complex<float>>
+fbandpass(const std::vector<std::complex<float>> &bins0,
           double bin_hz,
           double low_outer,  // start of transition
           double low_inner,  // start of flat area
@@ -2314,7 +2314,7 @@ fbandpass(const std::vector<std::complex<double>> &bins0,
   // assert(high_outer <= bin_hz * bins0.size());
 
   int nbins = bins0.size();
-  std::vector<std::complex<double>> bins1(nbins);
+  std::vector<std::complex<float>> bins1(nbins);
 
   for(int i = 0; i < nbins; i++){
     double ihz = i * bin_hz;
@@ -2347,7 +2347,7 @@ fbandpass(const std::vector<std::complex<double>> &bins0,
     } else {
       factor = 1.0;
     }
-    bins1[i] = bins0[i] * factor;
+    bins1[i] = bins0[i] * (float) factor;
   }
 
   return bins1;
@@ -2362,23 +2362,23 @@ fbandpass(const std::vector<std::complex<double>> &bins0,
 //
 // XXX maybe merge w/ fft_shift() / shift200().
 //
-std::vector<double>
-down_v7(const std::vector<double> &samples, double hz)
+std::vector<float>
+down_v7(const std::vector<float> &samples, double hz)
 {
   int len = samples.size();
-  std::vector<std::complex<double>> bins = one_fft(samples, 0, len, "down_v7a", 0);
+  std::vector<std::complex<float>> bins = one_fft(samples, 0, len, "down_v7a", 0);
 
   return down_v7_f(bins, len, hz);
 }
 
-std::vector<double>
-down_v7_f(const std::vector<std::complex<double>> &bins, int len, double hz)
+std::vector<float>
+down_v7_f(const std::vector<std::complex<float>> &bins, int len, double hz)
 {
   int nbins = bins.size();
 
   double bin_hz = rate_ / (double) len;
   int down = round((hz - 25) / bin_hz);
-  std::vector<std::complex<double>> bins1(nbins);
+  std::vector<std::complex<float>> bins1(nbins);
   for(int i = 0; i < nbins; i++){
     int j = i + down;
     if(j >= 0 && j < nbins){
@@ -2405,10 +2405,10 @@ down_v7_f(const std::vector<std::complex<double>> &bins, int len, double hz)
 
   // convert back to time domain and down-sample to 200 samples/second.
   int blen = round(len * (200.0 / rate_));
-  std::vector<std::complex<double>> bbins(blen / 2 + 1);
+  std::vector<std::complex<float>> bbins(blen / 2 + 1);
   for(int i = 0; i < (int) bbins.size(); i++)
     bbins[i] = bins1[i];
-  std::vector<double> out = one_ifft(bbins, "down_v7b");
+  std::vector<float> out = one_ifft(bbins, "down_v7b");
   
   return out;
 }
@@ -2424,7 +2424,7 @@ down_v7_f(const std::vector<std::complex<double>> &bins, int len, double hz)
 // XXX merge with one_iter().
 //
 int
-one(const std::vector<std::complex<double>> &bins, int len, double hz, int off)
+one(const std::vector<std::complex<float>> &bins, int len, double hz, int off)
 {
   //
   // set up to search for best frequency and time offset.
@@ -2434,7 +2434,7 @@ one(const std::vector<std::complex<double>> &bins, int len, double hz, int off)
   // move down to 25 hz and re-sample to 200 samples/second,
   // i.e. 32 samples/symbol.
   //
-  std::vector<double> samples200 = down_v7_f(bins, len, hz);
+  std::vector<float> samples200 = down_v7_f(bins, len, hz);
 
   int off200 = round((off / (double) rate_) * 200.0);
 
@@ -2448,7 +2448,7 @@ one(const std::vector<std::complex<double>> &bins, int len, double hz, int off)
 //   perhaps in a different pass.
 // return 0 if we could not decode.
 int
-one_iter(const std::vector<double> &samples200, int best_off, double hz_for_cb)
+one_iter(const std::vector<float> &samples200, int best_off, double hz_for_cb)
 {
   if(do_second){
     // search for a second signal, in case there are two
@@ -2710,12 +2710,12 @@ fine(const ffts_t &m79, int bin0, double &adj_hz, double &adj_off)
 // return 0 if we could not decode.
 //
 int
-one_iter1(const std::vector<double> &samples200x,
+one_iter1(const std::vector<float> &samples200x,
           int best_off, double best_hz,
           double hz0_for_cb, double hz1_for_cb)
 {
   // put best_hz in the middle of bin 4, at 25.0.
-  std::vector<double> samples200 = shift200(samples200x, 0, samples200x.size(),
+  std::vector<float> samples200 = shift200(samples200x, 0, samples200x.size(),
                                             best_hz);
 
   // mini 79x8 FFT.
@@ -2855,7 +2855,7 @@ subtract(const std::vector<int> re79,
         for(int n = 0; n < block; n++)
         {
             double theta = -dtheta * n;
-            std::complex<double> lo(cos(theta), sin(theta));
+            std::complex<float> lo(cos(theta), sin(theta));
             c += samples_[off0 + i*block + n] * lo;
         }
 
@@ -3150,7 +3150,7 @@ subtract(const std::vector<int> re79,
 // return 0 if we could not decode.
 //
 int
-try_decode(const std::vector<double> &samples200,
+try_decode(const std::vector<float> &samples200,
            double ll174[174],
            double best_hz, int best_off_samples, double hz0_for_cb, double hz1_for_cb,
            int use_osd, const char *comment1,
@@ -3285,7 +3285,7 @@ entry(float xsamples[], int nsamples, int start, int rate,
   // }
 
   // std::vector<double> samples(nsamples);
-  std::vector<double> samples(192000);
+  std::vector<float> samples(192000);
   for(int i = 0; i < nsamples; i++){
     samples[i] = xsamples[i];
   }
