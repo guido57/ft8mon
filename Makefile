@@ -1,31 +1,15 @@
-CXX = c++ -O
+CXX = c++ -O -fstack-usage
 # CXX += -g -fsanitize=address
 # CXX = g++9 -O3
-FLAGS = -std=c++17 -I/opt/local/include -I/usr/local/include -I/opt/local/include/libairspyhf -I/usr/include/libairspyhf
-LIBS = -L/opt/local/lib -L/usr/local/lib -lsndfile
+FLAGS = -std=c++17 -I/opt/local/include -I/usr/local/include 
+LIBS = -L/opt/local/lib -L/usr/local/lib
 
 MOREC = 
 MOREH = 
 
-# uncomment if you have the airspyhf and liquid dsp libraries.
-# try -lusb or -lusb-1.0 ; also apt install libusb-1.0-0-dev
-# CXX += -DUSE_AIRSPYHF
-# LIBS += -lairspyhf -lliquid -lusb-1.0
 
-# for the Apache ANAN-7000dle, and possibly other HPSDR radios.
-# CXX += -DUSE_HPSDR
-# MOREC += hpsdr.cc
-# MOREH += hpsdr.h
-# LIBS += -lliquid
-
-# for the RFSpace SDR-IP, NetSDR, CloudIQ and CloudSDR in I/Q mode.
-# CXX += -DUSE_SDRIP
-# MOREC += sdrip.cc
-# MOREH += sdrip.h
-# LIBS += -lliquid
-
-ft8mon: ft8.cc kiss_fft.c kiss_fftr.c ft8mon.cc snd.cc libldpc.c osd.cc unpack.cc util.cc fft.cc cloudsdr.h cloudsdr.cc $(MOREC) $(MOREH)
-	$(CXX) $(FLAGS) ft8mon.cc ft8.cc kiss_fft.c kiss_fftr.c unpack.cc osd.cc snd.cc util.cc fft.cc libldpc.c cloudsdr.cc $(MOREC) -o ft8mon $(LIBS) -lportaudio 
+ft8mon: ft8.cc kiss_fft.c kiss_fftr.c ft8mon.cc libldpc.c osd.cc unpack.cc util.cc fft.cc  $(MOREC) $(MOREH)
+	$(CXX) $(FLAGS) ft8mon.cc ft8.cc kiss_fft.c kiss_fftr.c unpack.cc osd.cc util.cc fft.cc libldpc.c  $(MOREC) -o ft8mon $(LIBS) 
 
 clean:
 	rm -f ft8mon
