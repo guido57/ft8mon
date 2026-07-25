@@ -34,7 +34,6 @@
 #define heap_caps_get_free_size(x) (0)
 #endif
 
-#include "reduce_rate_poly.h"
 
 // 1920-point FFT at 12000 samples/second
 // 6.25 Hz spacing, 0.16 seconds/symbol
@@ -425,7 +424,7 @@ public:
   double min_hz_;
   double max_hz_;
   std::vector<double> samples_;  // input to each pass
-  std::vector<double> nsamples_; // subtract from here
+  //std::vector<double> nsamples_; // subtract from here
 
   int start_; // sample number of 0.5 seconds into samples[]
   int rate_;  // samples/second
@@ -874,7 +873,7 @@ go(int npasses)
   int si1 = (start_ + tplus*rate_) / block;
 
   // a copy from which to subtract.
-  nsamples_ = samples_; 
+  // nsamples_ = samples_; 
 
   int any = 0;
   printf("cycle on prevdecs_.size() = %d\n", (int) prevdecs_.size());  
@@ -903,7 +902,7 @@ go(int npasses)
     }
   }
   if(any){
-    samples_ = nsamples_;
+    // samples_ = nsamples_;
   }
 
   printf("rate=%d\n", rate_);
@@ -3018,156 +3017,156 @@ subtract(const std::vector<int> re79,
 //
 // re79[] holds the error-corrected symbol numbers.
 //
-void
-subtract_ori(const std::vector<int> re79,
-         double hz0,
-         double hz1,
-         double off_sec)
-{
-  int block = blocksize(rate_);
-  double bin_hz = rate_ / (double) block;
-  int off0 = off_sec * rate_;
+// void
+// subtract_ori(const std::vector<int> re79,
+//          double hz0,
+//          double hz1,
+//          double off_sec)
+// {
+//   int block = blocksize(rate_);
+//   double bin_hz = rate_ / (double) block;
+//   int off0 = off_sec * rate_;
 
-  double mhz = (hz0 + hz1) / 2.0;
-  int bin0 = round(mhz / bin_hz);
+//   double mhz = (hz0 + hz1) / 2.0;
+//   int bin0 = round(mhz / bin_hz);
 
-  // move nsamples so that signal is centered in bin0.
-  double diff0 = (bin0 * bin_hz) - hz0;
-  double diff1 = (bin0 * bin_hz) - hz1;
-  printf("subtract call hilbert shift: diff0 %.2f, diff1 %.2f, rate %d\n",
-         diff0, diff1, rate_);
+//   // move nsamples so that signal is centered in bin0.
+//   double diff0 = (bin0 * bin_hz) - hz0;
+//   double diff1 = (bin0 * bin_hz) - hz1;
+//   printf("subtract call hilbert shift: diff0 %.2f, diff1 %.2f, rate %d\n",
+//          diff0, diff1, rate_);
 
-  std::vector<double> moved = hilbert_shift(nsamples_, diff0, diff1, rate_);
+//   std::vector<double> moved = hilbert_shift(nsamples_, diff0, diff1, rate_);
   
-  ffts_t bins = ffts(moved, off0, block, "subtract");
+//   ffts_t bins = ffts(moved, off0, block, "subtract");
 
-  if(bin0 + 8 > (int) bins[0].size())
-    return;
-  if((int) bins.size() < 79)
-    return;
+//   if(bin0 + 8 > (int) bins[0].size())
+//     return;
+//   if((int) bins.size() < 79)
+//     return;
 
-  std::vector<double> phases(79);
-  std::vector<double> amps(79);
-  for(int i = 0; i < 79; i++){
-    int sym = bin0 + re79[i];
-    std::complex<double> c = bins[i][sym];
-    phases[i] = std::arg(c);
+//   std::vector<double> phases(79);
+//   std::vector<double> amps(79);
+//   for(int i = 0; i < 79; i++){
+//     int sym = bin0 + re79[i];
+//     std::complex<double> c = bins[i][sym];
+//     phases[i] = std::arg(c);
 
-    // FFT multiplies magnitudes by number of bins,
-    // or half the number of samples.
-    amps[i] = std::abs(c) / (block / 2.0);
-  }
+//     // FFT multiplies magnitudes by number of bins,
+//     // or half the number of samples.
+//     amps[i] = std::abs(c) / (block / 2.0);
+//   }
 
-  int ramp = round(block * subtract_ramp);
-  if(ramp < 1)
-    ramp = 1;
+//   int ramp = round(block * subtract_ramp);
+//   if(ramp < 1)
+//     ramp = 1;
 
-  //initial ramp part of first symbol.
-  {
-    int sym = bin0 + re79[0];
-    double phase = phases[0];
-    double amp = amps[0];
-    double hz = 6.25 * sym;
-    double dtheta = 2 * M_PI / (rate_ / hz); // advance per sample
-    for(int jj = 0; jj < ramp; jj++){
-      double theta = phase + jj * dtheta;
-      double x = amp * cos(theta);
-      x *= jj / (double) ramp;
-      int iii = off0 + block*0 + jj;
-      moved[iii] -= x;
-    }
-  }
+//   //initial ramp part of first symbol.
+//   {
+//     int sym = bin0 + re79[0];
+//     double phase = phases[0];
+//     double amp = amps[0];
+//     double hz = 6.25 * sym;
+//     double dtheta = 2 * M_PI / (rate_ / hz); // advance per sample
+//     for(int jj = 0; jj < ramp; jj++){
+//       double theta = phase + jj * dtheta;
+//       double x = amp * cos(theta);
+//       x *= jj / (double) ramp;
+//       int iii = off0 + block*0 + jj;
+//       moved[iii] -= x;
+//     }
+//   }
 
-  for(int si = 0; si < 79; si++){
-    int sym = bin0 + re79[si];
+//   for(int si = 0; si < 79; si++){
+//     int sym = bin0 + re79[si];
 
-    double phase = phases[si];
-    double amp = amps[si];
+//     double phase = phases[si];
+//     double amp = amps[si];
     
-    double hz = 6.25 * sym;
-    double dtheta = 2 * M_PI / (rate_ / hz); // advance per sample
+//     double hz = 6.25 * sym;
+//     double dtheta = 2 * M_PI / (rate_ / hz); // advance per sample
 
-    // we've already done the first ramp for this symbol.
-    // now for the steady part between ramps.
-    for(int jj = ramp; jj < block-ramp; jj++){
-      double theta = phase + jj * dtheta;
-      double x = amp * cos(theta);
-      int iii = off0 + block*si + jj;
-      moved[iii] -= x;
-    }
+//     // we've already done the first ramp for this symbol.
+//     // now for the steady part between ramps.
+//     for(int jj = ramp; jj < block-ramp; jj++){
+//       double theta = phase + jj * dtheta;
+//       double x = amp * cos(theta);
+//       int iii = off0 + block*si + jj;
+//       moved[iii] -= x;
+//     }
 
-    // now the two ramps, from us to the next symbol.
-    // we need to smoothly change the frequency,
-    // approximating wsjt-x's gaussian frequency shift,
-    // and also end up matching the next symbol's phase,
-    // which is often different from this symbol due
-    // to inaccuracies in hz or offset.
+//     // now the two ramps, from us to the next symbol.
+//     // we need to smoothly change the frequency,
+//     // approximating wsjt-x's gaussian frequency shift,
+//     // and also end up matching the next symbol's phase,
+//     // which is often different from this symbol due
+//     // to inaccuracies in hz or offset.
 
-    // at start of this symbol's off-ramp.
-    double theta = phase + (block-ramp) * dtheta;
+//     // at start of this symbol's off-ramp.
+//     double theta = phase + (block-ramp) * dtheta;
 
-    double hz1;
-    double phase1;
-    if(si+1 >= 79){
-      hz1 = hz;
-      phase1 = phase;
-    } else {
-      int sym1 = bin0 + re79[si+1];
-      hz1 = 6.25 * sym1;
-      phase1 = phases[si+1];
-    }
-    double dtheta1 = 2 * M_PI / (rate_ / hz1);
+//     double hz1;
+//     double phase1;
+//     if(si+1 >= 79){
+//       hz1 = hz;
+//       phase1 = phase;
+//     } else {
+//       int sym1 = bin0 + re79[si+1];
+//       hz1 = 6.25 * sym1;
+//       phase1 = phases[si+1];
+//     }
+//     double dtheta1 = 2 * M_PI / (rate_ / hz1);
 
-    // add this to dtheta for each sample, to gradually
-    // change the frequency.
-    double inc = (dtheta1 - dtheta) / (2.0 * ramp);
+//     // add this to dtheta for each sample, to gradually
+//     // change the frequency.
+//     double inc = (dtheta1 - dtheta) / (2.0 * ramp);
 
-    // after we've applied all those inc's, what will the
-    // phase be at the end of the next symbol's initial ramp,
-    // if we don't do anything to correct it?
-    double actual = theta + dtheta*2.0*ramp + inc*4.0*ramp*ramp/2.0;
+//     // after we've applied all those inc's, what will the
+//     // phase be at the end of the next symbol's initial ramp,
+//     // if we don't do anything to correct it?
+//     double actual = theta + dtheta*2.0*ramp + inc*4.0*ramp*ramp/2.0;
 
-    // what phase does the next symbol want to be at when
-    // its on-ramp finishes?
-    double target = phase1 + dtheta1*ramp;
+//     // what phase does the next symbol want to be at when
+//     // its on-ramp finishes?
+//     double target = phase1 + dtheta1*ramp;
 
-    // ???
-    while(fabs(target - actual) > M_PI){
-      if(target < actual)
-        target += 2*M_PI;
-      else
-        target -= 2*M_PI;
-    }
+//     // ???
+//     while(fabs(target - actual) > M_PI){
+//       if(target < actual)
+//         target += 2*M_PI;
+//       else
+//         target -= 2*M_PI;
+//     }
 
-    // adj is to be spread evenly over the off-ramp and on-ramp samples.
-    double adj = target - actual;
+//     // adj is to be spread evenly over the off-ramp and on-ramp samples.
+//     double adj = target - actual;
 
-    int end = block + ramp;
-    if(si == 79-1)
-      end = block;
+//     int end = block + ramp;
+//     if(si == 79-1)
+//       end = block;
     
-    for(int jj = block-ramp; jj < end; jj++){
-      int iii = off0 + block*si + jj;
-      double x = amp * cos(theta);
+//     for(int jj = block-ramp; jj < end; jj++){
+//       int iii = off0 + block*si + jj;
+//       double x = amp * cos(theta);
 
-      // trail off to zero at the very end.
-      if(si == 79-1)
-        x *= 1.0 - ((jj - (block - ramp)) / (double) ramp);
+//       // trail off to zero at the very end.
+//       if(si == 79-1)
+//         x *= 1.0 - ((jj - (block - ramp)) / (double) ramp);
       
-      moved[iii] -= x;
+//       moved[iii] -= x;
 
-      theta += dtheta;
-      dtheta += inc;
-      theta += adj / (2.0 * ramp);
-    }
-  }
+//       theta += dtheta;
+//       dtheta += inc;
+//       theta += adj / (2.0 * ramp);
+//     }
+//   }
 
-  printf("subtract call hilbert shift: diff0 %.2f, diff1 %.2f, rate %d\n",
-         diff0, diff1, rate_);
+//   printf("subtract call hilbert shift: diff0 %.2f, diff1 %.2f, rate %d\n",
+//          diff0, diff1, rate_);
  
-  nsamples_ = hilbert_shift(moved, -diff0, -diff1, rate_);
+//   nsamples_ = hilbert_shift(moved, -diff0, -diff1, rate_);
   
-}
+// }
 
 //
 // decode, give to callback, and subtract.
@@ -3237,7 +3236,7 @@ try_decode(const std::vector<double> &samples200,
       cb_mu_.unlock();
       if(ret == 2){
         // a new decode. subtract it from nsamples_.
-        printf("subtracting: hz %.2f, off %.3f\n", best_hz, best_off);
+        // printf("subtracting: hz %.2f, off %.3f\n", best_hz, best_off);
         subtract(re79, best_hz, best_hz, best_off);
       }
 
