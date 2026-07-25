@@ -212,8 +212,9 @@ void run_decoder(const std::vector<int16_t> &s16, int rate) {
   entry(s.data(), s.size(), 0.5 * rate, rate,
         150,
         3600, 
-        hints, hints, budget, budget, hcb,
-        0, (struct cdecode *) 0);
+        hints, hints, budget, budget, hcb
+      //  0, (struct cdecode *) 0
+      );
 }
 // ---------------------------------------------------------
 // ESP32 SPECIFIC IMPLEMENTATION

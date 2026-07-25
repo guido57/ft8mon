@@ -3296,21 +3296,22 @@ entry(float xsamples[], int nsamples, int start, int rate,
       double max_hz,
       int hints1[],
       int hints2[],
-      double time_left, double total_time_left, cb_t cb,
-      int nprevdecs,
-      struct cdecode *xprevdecs)
+      double time_left, double total_time_left, cb_t cb
+      // int ,
+      // struct cdecode *xprevdecs
+      )
 {
   double t0 = now();
   double deadline = t0 + time_left;
   double final_deadline = t0 + total_time_left;
 
   // decodes from previous runs, for subtraction.
-  printf("entry: %d prevdecs, %d samples, %.1f-%.1f hz, %.1f sec left, %.1f total\n",
-         nprevdecs, nsamples, min_hz, max_hz, time_left, total_time_left);
+  printf("entry: %d samples, %.1f-%.1f hz, %.1f sec left, %.1f total\n",
+         nsamples, min_hz, max_hz, time_left, total_time_left);
   std::vector<cdecode> prevdecs;
-  for(int i = 0; i < nprevdecs; i++){
-    prevdecs.push_back(xprevdecs[i]);
-  }
+  // for(int i = 0; i < nprevdecs; i++){
+  //   prevdecs.push_back(xprevdecs[i]);
+  // }
 
   std::vector<double> samples(nsamples);
   for(int i = 0; i < nsamples; i++){
@@ -3338,7 +3339,8 @@ entry(float xsamples[], int nsamples, int start, int rate,
                      deadline, final_deadline, cb,
                      prevdecs);
 
-  int npasses = nprevdecs > 0 ? npasses_two : npasses_one;
+  // int npasses = nprevdecs > 0 ? npasses_two : npasses_one;
+  int npasses = npasses_one; // For ESP32-S3, we will only run one pass for simplicity.  
 
   // Run directly. No threads, no joins, no mutexes!
   printf("Running FT8 decoding for %d passes\n", npasses);

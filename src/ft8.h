@@ -18,8 +18,9 @@ extern "C" {
              double min_hz,
              double max_hz,
              int hints1[], int hints2[], double time_left,
-             double total_time_left, cb_t cb,
-             int prevdecs, struct cdecode *);
+             double total_time_left, cb_t cb
+            // int prevdecs, struct cdecode *
+            );
   double set(char *param, char *val);
 }
 
