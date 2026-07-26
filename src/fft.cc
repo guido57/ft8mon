@@ -148,12 +148,12 @@ one_fft(const std::vector<float> &samples, int i0, int block,
   // ==========================================
   std::map<int, KissPlan*>& cache = get_kiss_cache();
   if(cache.count(block) == 0) {
-    printf("one_fft: allocating KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_fft: allocating KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cache[block] = new KissPlan(block);
-    printf("one_fft: Allocated KissPlan for block size %d. PSRAM free=%d\n", 
-            block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+      // printf("one_fft: Allocated KissPlan for block size %d. PSRAM free=%d\n", 
+      //         block,
+      //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }else if( block > 10000){
     // printf("one_fft: Reusing KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
     //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -207,11 +207,11 @@ ffts(const std::vector<float> &samples, int i0, int block, const char *why)
   // ==========================================
   std::map<int, KissPlan*>& cache = get_kiss_cache();
   if(cache.count(block) == 0) {
-    printf("ffts: allocating KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("ffts: allocating KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cache[block] = new KissPlan(block);
-    printf("ffts: Allocated KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("ffts: Allocated KissPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
   KissPlan *kp = cache[block];
 
@@ -256,11 +256,11 @@ one_fft_c(const std::vector<double> &samples, int i0, int block, const char *why
 
   std::map<int, KissC2CPlan*>& cache = get_kiss_c2c_cache();
   if(cache.count(block) == 0) {
-    printf("one_fft_c: allocating KissC2CPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_fft_c: allocating KissC2CPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cache[block] = new KissC2CPlan(block);
-    printf("one_fft_c: Allocated KissC2CPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_fft_c: Allocated KissC2CPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
   KissC2CPlan *kp = cache[block];
  
@@ -328,11 +328,11 @@ one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why)
 
   std::map<int, KissC2CIPlan*>& cache = get_kiss_c2ci_cache();
   if(cache.count(block) == 0) {
-    printf("one_ifft_cc: allocating KissC2CIPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_ifft_cc: allocating KissC2CIPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cache[block] = new KissC2CIPlan(block);
-    printf("one_ifft_cc: Allocated KissC2CIPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_ifft_cc: Allocated KissC2CIPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
   KissC2CIPlan *kp = cache[block];
 
@@ -362,11 +362,11 @@ one_ifft(const std::vector<std::complex<float>> &bins, const char *why)
 
   std::map<int, KissIFFTRPlan*>& cache = get_kiss_ifft_cache();
   if(cache.count(block) == 0) {
-    printf("one_ifft: allocating KissIFFTRPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_ifft: allocating KissIFFTRPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cache[block] = new KissIFFTRPlan(block);
-    printf("one_ifft: Allocated KissIFFTRPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("one_ifft: Allocated KissIFFTRPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }else if( block > 10000){
     // printf("one_ifft: Reusing KissIFFTRPlan for reason %s and block size %d. PSRAM free=%d\n", why, block,
     //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));

@@ -666,17 +666,17 @@ reduce_rate(const std::vector<float> &a, double hz0, double hz1,
   }
 
   int alen = a.size();
-  printf("reduce_rate: getting %d bins1 from one_fft. PSRAM free=%d\n",
-          alen,
-          heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  // printf("reduce_rate: getting %d bins1 from one_fft. PSRAM free=%d\n",
+  //         alen,
+  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   std::vector<std::complex<float>> bins1 = one_fft(a, 0, alen,
                                                     "reduce_rate1", 0);
   int nbins1 = bins1.size();
 
-  printf("reduce_rate: bins1.size()=%d, PSRAM free=%d\n",
-          nbins1,
-          heap_caps_get_free_size(MALLOC_CAP_SPIRAM)
-          );
+    // printf("reduce_rate: bins1.size()=%d, PSRAM free=%d\n",
+    //         nbins1,
+    //       heap_caps_get_free_size(MALLOC_CAP_SPIRAM)
+    //       );
 
   double bin_hz = arate / (double) alen;
 
@@ -689,8 +689,8 @@ reduce_rate(const std::vector<float> &a, double hz0, double hz1,
                       hz11);
   }
 
-  printf("reduce_rate: after bandpass, PSRAM free=%d\n",
-          heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  // printf("reduce_rate: after bandpass, PSRAM free=%d\n",
+  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   
   if(reduce_how == 3){
     for(int i = 0; i < nbins1; i++){
@@ -710,9 +710,9 @@ reduce_rate(const std::vector<float> &a, double hz0, double hz1,
   delta = 0; // !!!!!!!!!!!!!!!!!!!!!!! don't shift down, just filter
   assert(delta < nbins1);
   int blen = round(alen * (brate / (double) arate));
-  printf("reduce_rate: creating %d bbins. PSRAM free=%d\n",
-          blen,
-          heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  // printf("reduce_rate: creating %d bbins. PSRAM free=%d\n",
+  //         blen,
+  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   std::vector<std::complex<float>> bbins(blen / 2 + 1);
   for(int i = 0; i < (int) bbins.size(); i++){
     if(delta > 0){
@@ -723,16 +723,16 @@ reduce_rate(const std::vector<float> &a, double hz0, double hz1,
   }
 
   // use ifft to reduce the rate.
-  printf("reduce_rate: calling one_ifft. PSRAM free=%d\n",
-          heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  // printf("reduce_rate: calling one_ifft. PSRAM free=%d\n",
+  //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   std::vector<float> vvv = one_ifft(bbins, "reduce_rate2");
 
   delta_hz = delta * bin_hz;
 
-  printf("hz00=%f hz0=%f hz1=%f hz11=%f\n",
-       hz00,hz0,hz1,hz11);
+  // printf("hz00=%f hz0=%f hz1=%f hz11=%f\n",
+  //      hz00,hz0,hz1,hz11);
 
-  printf("delta=%f Hz\n",delta_hz);
+  // printf("delta=%f Hz\n",delta_hz);
 
   return vvv;
 }
@@ -742,8 +742,8 @@ go(int npasses)
 {
     
   if(1){
-    printf("go: %.0f .. %.0f, %.0f, rate=%d\n",
-            min_hz_, max_hz_, max_hz_ - min_hz_, rate_);
+    // printf("go: %.0f .. %.0f, %.0f, rate=%d\n",
+    //         min_hz_, max_hz_, max_hz_ - min_hz_, rate_);
   }
 
   // trim to make samples_ a good size for FFTW.
@@ -787,10 +787,10 @@ go(int npasses)
     int osize = samples_.size();
     
     double delta_hz; // how much it moved down
-    printf("reduce: %.0f..%.0f, range %.0f, rate %d -> %d PSRAM free=%d\n",
-            min_hz_, max_hz_,
-            max_hz_ - min_hz_,
-            rate_, nrate,  heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("reduce: %.0f..%.0f, range %.0f, rate %d -> %d PSRAM free=%d\n",
+    //         min_hz_, max_hz_,
+    //         max_hz_ - min_hz_,
+    //         rate_, nrate,  heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     
     // std::vector<double> delta(180000,0);
     // delta[0]=1.0;
@@ -807,19 +807,19 @@ go(int npasses)
     
     double t1 = now();
     if(t1 - t0 > 0.1){
-      fprintf(stderr, "reduce oops, size %d -> %d, rate %d -> %d, took %.2f\n",
-              osize,
-              (int) samples_.size(),
-              rate_,
-              nrate,
-              t1 - t0);
+      // fprintf(stderr, "reduce oops, size %d -> %d, rate %d -> %d, took %.2f\n",
+      //         osize,
+      //         (int) samples_.size(),
+      //         rate_,
+      //         nrate,
+      //         t1 - t0);
     }
     if(1){
-      printf("%.0f..%.0f, range %.0f, rate %d -> %d, delta hz %.0f, %.6f sec\n",
-              min_hz_, max_hz_,
-              max_hz_ - min_hz_,
-              rate_, nrate, delta_hz, t1 - t0);
-    }
+    //   printf("%.0f..%.0f, range %.0f, rate %d -> %d, delta hz %.0f, %.6f sec\n",
+    //           min_hz_, max_hz_,
+    //           max_hz_ - min_hz_,
+    //           rate_, nrate, delta_hz, t1 - t0);
+     }
 
     if(delta_hz > 0){
       down_hz_ = delta_hz; // to adjust hz for Python.
@@ -854,22 +854,22 @@ go(int npasses)
     std::uniform_int_distribution<int> distribution(0, samples_.size()-1);
     auto rnd = std::bind(distribution, generator);
 
-    printf("go: need %d more samples, PSRAM free=%d\n",
-            need,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("go: need %d more samples, PSRAM free=%d\n",
+    //         need,
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     std::vector<double> v(need);
-    printf("go: allocated vector<double v> of size %lu bytes\n", v.size());
+    // printf("go: allocated vector<double v> of size %lu bytes\n", v.size());
     for(int i = 0; i < need; i++){
       //v[i] = 0;
       v[i] = samples_[rnd()]; 
     }
-    printf("go: adding %d random samples to the end of samples_ (having size %lu capacity %lu), PSRAM free=%d\n",
-            need, samples_.size(), samples_.capacity(),
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("go: adding %d random samples to the end of samples_ (having size %lu capacity %lu), PSRAM free=%d\n",
+    //         need, samples_.size(), samples_.capacity(),
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     samples_.insert(samples_.end(), v.begin(), v.end());
-    printf("go: after adding samples_.size() is %lu capacity is %lu, PSRAM free=%d\n",
-            samples_.size(), samples_.capacity(),
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("go: after adding samples_.size() is %lu capacity is %lu, PSRAM free=%d\n",
+    //         samples_.size(), samples_.capacity(),
+    //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
   
   int si0 = (start_ - tminus*rate_) / block;
@@ -878,15 +878,15 @@ go(int npasses)
   int si1 = (start_ + tplus*rate_) / block;
 
 
-  printf("rate=%d\n", rate_);
-  printf("block=%d\n", block);
-  printf("start=%d\n", start_);
-  printf("tminus=%f\n", tminus);
-  printf("tplus=%f\n", tplus);
+  // printf("rate=%d\n", rate_);
+  // printf("block=%d\n", block);
+  // printf("start=%d\n", start_);
+  // printf("tminus=%f\n", tminus);
+  // printf("tplus=%f\n", tplus);
 
-  printf("go: cycle on npasses=%d\n", npasses);
+  // printf("go: cycle on npasses=%d\n", npasses);
   for(pass_ = 0; pass_ < npasses; pass_++){
-    printf("\r\n======== PASS %d OF %d ==================\r\n\r\n", pass_ + 1, npasses);
+    // printf("\r\n======== PASS %d OF %d ==================\r\n\r\n", pass_ + 1, npasses);
     double total_remaining = deadline_ - now();
     double remaining = total_remaining / (npasses - pass_);
     if(pass_ == 0){
@@ -906,8 +906,8 @@ go(int npasses)
 
     // just do this once, re-use for every fractional fft_shift
     // and down_v7_f() to 200 sps.
-    printf("go: calling one_fft on %d points for coarse search, PSRAM free=%d\n",
-           (int) samples_.size(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    // printf("go: calling one_fft on %d points for coarse search, PSRAM free=%d\n",
+    //        (int) samples_.size(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     std::vector<std::complex<float>> bins = one_fft(samples_, 0, samples_.size(),
                                                      "go1", 0);
 
@@ -918,29 +918,29 @@ go(int npasses)
       double hz_frac = hz_frac_i * (6.25 / coarse_hz_n);
       std::vector<float> samples1;
       if(hz_frac_i == 0){
-        printf("go: hz_frac=0, using original samples_ for coarse search, PSRAM free=%d\n",
-                heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        // printf("go: hz_frac=0, using original samples_ for coarse search, PSRAM free=%d\n",
+        //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         samples1 = samples_;
       } else {
-        printf("go: calling fft_shift_f on %d points for coarse search, hz_frac=%.2f, PSRAM free=%d\n",
-                (int) bins.size(), hz_frac, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        // printf("go: calling fft_shift_f on %d points for coarse search, hz_frac=%.2f, PSRAM free=%d\n",
+        //         (int) bins.size(), hz_frac, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         samples1 = fft_shift_f(bins, rate_, hz_frac);
       }
       
-      // coarse_off_n is the number of fractional offsets to try.
-      // e.g. if coarse_off_n=4, then we try off_frac=0, 480, 960, 1440s samples.
+      // coarse_off_n is the number of fractional timing offsets to try.
+      // e.g. if coarse_off_n=4, then we try off_frac=0 (0 seconds), 480 (0.4 seconds), 960 (0.8 seconds), 1440 (0.12 seconds) samples.
       for(int off_frac_i = 0; off_frac_i < coarse_off_n; off_frac_i++){
         int off_frac = off_frac_i * (block / coarse_off_n);
         // coarse() will look for Costas blocks in the FFT bins of samples1.
-        printf("go: calling ffts() on %d points for coarse search, off_frac=%d, block=%d, PSRAM free=%d\n",
-                (int) samples1.size(), off_frac, block, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        // printf("go: calling ffts() on %d points for coarse search, off_frac=%d, block=%d, PSRAM free=%d\n",
+        //         (int) samples1.size(), off_frac, block, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         ffts_t bins = ffts(samples1, off_frac, block, "go2");
 
-        printf("go: calling coarse() on %d bins between block si0=%d and block si1=%d\n",
-                (int) bins.size(), si0, si1);
+        // printf("go: calling coarse() on %d bins between block si0=%d and block si1=%d\n",
+        //         (int) bins.size(), si0, si1);
         std::vector<Strength> oo = coarse(bins, si0, si1);
-        printf("go: coarse() returned %d candidates, off_frac=%d, hz_frac=%.2f\n",
-                (int) oo.size(), off_frac, hz_frac);
+        // printf("go: coarse() returned %d candidates, off_frac=%d, hz_frac=%.2f\n",
+        //         (int) oo.size(), off_frac, hz_frac);
         for(int i = 0; i < (int) oo.size(); i++){
           oo[i].hz_ += hz_frac;
           oo[i].off_ += off_frac;
@@ -956,12 +956,14 @@ go(int npasses)
               [](const Strength &a, const Strength &b) -> bool
               { return a.strength_ > b.strength_; } );
     
+    // printf("go: sorted %d candidates between strength %.2f and %.2f, PSRAM free=%d\n",
+    //         (int) order.size(), order.begin()->strength_, order.end()->strength_, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     char already[2000]; // XXX
     for(int i = 0; i < (int)(sizeof(already)/sizeof(already[0])); i++)
       already[i] = 0;
     
-    printf("go: cycle on %d candidates, PSRAM free=%d\n",
-            (int) order.size(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));    
+      // printf("go: cycle on %d candidates, PSRAM free=%d\n",
+      //         (int) order.size(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));    
     for(int ii = 0; ii < (int) order.size(); ii++){
       
       // stop if we are out of time, or if we have enough decodes.
@@ -970,12 +972,12 @@ go(int npasses)
          tt > deadline &&
          (tt > deadline_ || new_decodes >= pass_threshold) &&
          (pass_ < npasses-1 || tt > final_deadline_)){
-          printf("go: TIMEOUT stopping at candidate %d of %d, time %.2f > deadline %.2f, new_decodes=%d >= pass_threshold=%d, pass_=%d, npasses=%d, final_deadline_=%f\n",
-                  ii, (int) order.size(),
-                  tt, deadline,
-                  new_decodes, pass_threshold,
-                  pass_, npasses,
-                  final_deadline_); 
+          // printf("go: TIMEOUT stopping at candidate %d of %d, time %.2f > deadline %.2f, new_decodes=%d >= pass_threshold=%d, pass_=%d, npasses=%d, final_deadline_=%f\n",
+          //         ii, (int) order.size(),
+          //         tt, deadline,
+          //         new_decodes, pass_threshold,
+          //         pass_, npasses,
+          //         final_deadline_); 
         break;
       }
 
@@ -1166,8 +1168,8 @@ search_time_fine_known(const std::vector<std::complex<float>> &bins,
   double hz0 = round(hz / 6.25) * 6.25;
 
   // move hz to hz0, so it is centered in a symbol-sized bin.
-  printf("search_time_fine_known: hz=%.2f, hz0=%.2f, delta=%.2f\n",
-          hz, hz0, hz - hz0);
+  // printf("search_time_fine_known: hz=%.2f, hz0=%.2f, delta=%.2f\n",
+  //         hz, hz0, hz - hz0);
   std::vector<float> downsamples = fft_shift_f(bins, rate, hz - hz0);
 
   int best_off = -1;
@@ -1318,8 +1320,8 @@ fft_shift(const std::vector<float> &samples, int off, int len,
   }
   hack_mu_.unlock();
 
-  printf("fft_shift: call fft_shift_f rate=%d hz=%.2f, bins.size()=%d\n",
-         rate, hz, (int) bins.size());
+  // printf("fft_shift: call fft_shift_f rate=%d hz=%.2f, bins.size()=%d\n",
+  //        rate, hz, (int) bins.size());
   return fft_shift_f(bins, rate, hz);
 }
 
@@ -3285,8 +3287,8 @@ entry(float xsamples[], int nsamples, int start, int rate,
   double final_deadline = t0 + total_time_left;
 
   // decodes from previous runs, for subtraction.
-  printf("entry: %d samples, %.1f-%.1f hz, %.1f sec left, %.1f total\n",
-         nsamples, min_hz, max_hz, time_left, total_time_left);
+  // printf("entry: %d samples, %.1f-%.1f hz, %.1f sec left, %.1f total\n",
+  //        nsamples, min_hz, max_hz, time_left, total_time_left);
   // std::vector<cdecode> prevdecs;
   // for(int i = 0; i < nprevdecs; i++){
   //   prevdecs.push_back(xprevdecs[i]);
@@ -3308,7 +3310,7 @@ entry(float xsamples[], int nsamples, int start, int rate,
   // ESP32-S3 Single-Threaded Execution:
   // Instead of slicing the frequency band into chunks for multiple threads,
   // we just process the entire requested frequency range in one go.
-  printf("Single-threaded execution: processing %.1f-%.1f hz\n", min_hz, max_hz);
+  // printf("Single-threaded execution: processing %.1f-%.1f hz\n", min_hz, max_hz);
   min_hz = std::max(min_hz, (double) 0.0);
   max_hz = std::min(max_hz, (double) ((rate / 2.0f) - 50.0f));
 
@@ -3323,7 +3325,7 @@ entry(float xsamples[], int nsamples, int start, int rate,
   int npasses = npasses_one; // For ESP32-S3, we will only run one pass for simplicity.  
 
   // Run directly. No threads, no joins, no mutexes!
-  printf("Running FT8 decoding for %d passes\n", npasses);
+  // printf("Running FT8 decoding for %d passes\n", npasses);
   ft8->go(npasses);
 
   delete ft8;

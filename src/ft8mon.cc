@@ -59,7 +59,7 @@ void* operator new(size_t size) {
     }
 
     if(size > 1000000) {
-        printf("operator new: large allocation: %zu bytes at %p\n", size, p);
+        // printf("operator new: large allocation: %zu bytes at %p\n", size, p);
     } else {
         // printf("Linux allocation: %zu bytes at %p\n", size, p);
     }
@@ -84,14 +84,14 @@ void* operator new[](size_t size) {
         throw std::bad_alloc();
     }
 
-    printf("Linux array allocation: %zu bytes at %p\n", size, p);
+    // printf("Linux array allocation: %zu bytes at %p\n", size, p);
 
     return p;
 }
 
 
 void operator delete[](void* p) noexcept {
-    printf("Linux array free: %p\n", p);
+    // printf("Linux array free: %p\n", p);
     std::free(p);
 }
 
@@ -161,14 +161,22 @@ hcb(int *a91, double hz0, double hz1, double off,
   gmtime_r(&saved_cycle_start, &result);
 
   char output_buf[256];
-  snprintf(output_buf, sizeof(output_buf), "%.3f %d %02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
-         now() - start_now,
-         count++,
+  // snprintf(output_buf, sizeof(output_buf), "%.3f %d %02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
+  //        now() - start_now,
+  //        count++,
+  //        result.tm_hour,
+  //        result.tm_min,
+  //        result.tm_sec,
+  //        (int)snr,
+  //        correct_bits,
+  //        off - 0.5f,
+  //        hz0,
+  //        msg.c_str());
+  snprintf(output_buf, sizeof(output_buf), "%02d%02d%02d %3d %5.2f %6.1f ~ %s\n",
          result.tm_hour,
          result.tm_min,
          result.tm_sec,
          (int)snr,
-         correct_bits,
          off - 0.5f,
          hz0,
          msg.c_str());
