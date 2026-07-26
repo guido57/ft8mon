@@ -137,10 +137,10 @@ hamming(int n)
 //
 // blackman window
 //
-std::vector<double>
+std::vector<float>
 blackman(int n)
 {
-  std::vector<double> h(n);
+  std::vector<float> h(n);
   for(int k = 0; k < n; k++){
     h[k] = 0.42 - 0.5 * cos(2 * M_PI * k / n) + 0.08*cos(4 * M_PI * k / n);
   }
@@ -918,8 +918,12 @@ go(int npasses)
       double hz_frac = hz_frac_i * (6.25 / coarse_hz_n);
       std::vector<float> samples1;
       if(hz_frac_i == 0){
+        printf("go: hz_frac=0, using original samples_ for coarse search, PSRAM free=%d\n",
+                heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         samples1 = samples_;
       } else {
+        printf("go: calling fft_shift_f on %d points for coarse search, hz_frac=%.2f, PSRAM free=%d\n",
+                (int) bins.size(), hz_frac, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         samples1 = fft_shift_f(bins, rate_, hz_frac);
       }
       
@@ -928,15 +932,15 @@ go(int npasses)
       for(int off_frac_i = 0; off_frac_i < coarse_off_n; off_frac_i++){
         int off_frac = off_frac_i * (block / coarse_off_n);
         // coarse() will look for Costas blocks in the FFT bins of samples1.
-        // printf("go: calling ffts() on %d points for coarse search, off_frac=%d, hz_frac=%.2f, PSRAM free=%d\n",
-        //         (int) samples1.size(), off_frac, hz_frac, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        printf("go: calling ffts() on %d points for coarse search, off_frac=%d, block=%d, PSRAM free=%d\n",
+                (int) samples1.size(), off_frac, block, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         ffts_t bins = ffts(samples1, off_frac, block, "go2");
 
-        // printf("go: calling coarse() on %d bins between block si0=%d and block si1=%d\n",
-        //         (int) bins.size(), si0, si1);
+        printf("go: calling coarse() on %d bins between block si0=%d and block si1=%d\n",
+                (int) bins.size(), si0, si1);
         std::vector<Strength> oo = coarse(bins, si0, si1);
-        // printf("go: coarse() returned %d candidates, off_frac=%d, hz_frac=%.2f\n",
-        //         (int) oo.size(), off_frac, hz_frac);
+        printf("go: coarse() returned %d candidates, off_frac=%d, hz_frac=%.2f\n",
+                (int) oo.size(), off_frac, hz_frac);
         for(int i = 0; i < (int) oo.size(); i++){
           oo[i].hz_ += hz_frac;
           oo[i].off_ += off_frac;
@@ -1162,6 +1166,8 @@ search_time_fine_known(const std::vector<std::complex<float>> &bins,
   double hz0 = round(hz / 6.25) * 6.25;
 
   // move hz to hz0, so it is centered in a symbol-sized bin.
+  printf("search_time_fine_known: hz=%.2f, hz0=%.2f, delta=%.2f\n",
+          hz, hz0, hz - hz0);
   std::vector<float> downsamples = fft_shift_f(bins, rate, hz - hz0);
 
   int best_off = -1;
@@ -1312,6 +1318,8 @@ fft_shift(const std::vector<float> &samples, int off, int len,
   }
   hack_mu_.unlock();
 
+  printf("fft_shift: call fft_shift_f rate=%d hz=%.2f, bins.size()=%d\n",
+         rate, hz, (int) bins.size());
   return fft_shift_f(bins, rate, hz);
 }
 
@@ -1397,12 +1405,12 @@ un_gray_code_c(const ffts_t &m79)
 }
 
 //
-// m79 is a 79x8 array of double.
+// m79 is a 79x8 array of float.
 //
-std::vector< std::vector<double> > 
-un_gray_code_r(const std::vector<std::vector<double>> &m79)
+std::vector< std::vector<float> >
+un_gray_code_r(const std::vector<std::vector<float>> &m79)
 {
-  std::vector< std::vector<double> > m79a(79);
+  std::vector< std::vector<float> > m79a(79);
 
   int map[] = { 0, 1, 3, 2, 6, 4, 5, 7 };
   for(int si = 0; si < 79; si++){
@@ -1419,8 +1427,8 @@ un_gray_code_r(const std::vector<std::vector<double>> &m79)
 // normalize levels by windowed median.
 // this helps, but why?
 //
-std::vector< std::vector<double> >
-convert_to_snr(const std::vector< std::vector<double> > &m79)
+std::vector< std::vector<float> >
+convert_to_snr(const std::vector< std::vector<float> > &m79)
 {
   if(snr_how < 0 || snr_win < 0)
     return m79;
@@ -1428,12 +1436,12 @@ convert_to_snr(const std::vector< std::vector<double> > &m79)
   //
   // for each symbol time, what's its "noise" level?
   //
-  std::vector<double> mm(79);
+  std::vector<float> mm(79);
   for(int si = 0; si < 79; si++){
-    std::vector<double> v(8);
-    double sum = 0.0;
+    std::vector<float> v(8);
+    float sum = 0.0;
     for(int bi = 0; bi < 8; bi++){
-      double x = m79[si][bi];
+      float x = m79[si][bi];
       v[bi] = x;
       sum += x;
     }
@@ -1459,14 +1467,14 @@ convert_to_snr(const std::vector< std::vector<double> > &m79)
   }
 
   // we're going to take a windowed average.
-  std::vector<double> winwin;
+  std::vector<float> winwin;
   if(snr_win > 0){
     winwin = blackman(2*snr_win+1);
   } else {
     winwin.push_back(1.0);
   }
 
-  std::vector<std::vector<double>> n79(79);
+  std::vector<std::vector<float>> n79(79);
     
   for(int si = 0; si < 79; si++){
     double sum = 0;
@@ -1493,8 +1501,8 @@ convert_to_snr(const std::vector< std::vector<double> > &m79)
 // normalize levels by windowed median.
 // this helps, but why?
 //
-std::vector< std::vector<std::complex<double>> >
-c_convert_to_snr(const std::vector< std::vector<std::complex<double>> > &m79)
+std::vector< std::vector<std::complex<float>> >
+c_convert_to_snr(const std::vector< std::vector<std::complex<float>> > &m79)
 {
   if(snr_how < 0 || snr_win < 0)
     return m79;
@@ -1533,17 +1541,17 @@ c_convert_to_snr(const std::vector< std::vector<std::complex<double>> > &m79)
   }
 
   // we're going to take a windowed average.
-  std::vector<double> winwin;
+  std::vector<float> winwin;
   if(snr_win > 0){
     winwin = blackman(2*snr_win+1);
   } else {
     winwin.push_back(1.0);
   }
 
-  std::vector<std::vector<std::complex<double>>> n79(79);
+  std::vector<std::vector<std::complex<float>>> n79(79);
     
   for(int si = 0; si < 79; si++){
-    double sum = 0;
+    float sum = 0;
     for(int dd = si - snr_win; dd <= si + snr_win; dd++){
       int wi = dd - (si - snr_win);
       if(dd >= 0 && dd < 79){
@@ -1570,7 +1578,7 @@ c_convert_to_snr(const std::vector< std::vector<std::complex<double>> > &m79)
 // distribution of noise.
 //
 void
-make_stats(const std::vector<std::vector<double>> &m79,
+make_stats(const std::vector<std::vector<float>> &m79,
            Stats &bests,
            Stats &all)
 {
@@ -1614,18 +1622,18 @@ make_stats(const std::vector<std::vector<double>> &m79,
 // number of cycles and thus preserves phase from one symbol to the
 // next.
 //
-std::vector<std::vector<double>>
+std::vector<std::vector<float>>
 soft_c2m(const ffts_t &c79)
 {
-  std::vector< std::vector<double> > m79(79);
-  std::vector<double> raw_phases(79); // of strongest tone in each symbol time
+  std::vector< std::vector<float> > m79(79);
+  std::vector<float> raw_phases(79); // of strongest tone in each symbol time
   for(int si = 0; si < 79; si++){
     m79[si].resize(8);
     int mxi = -1;
-    double mx;
-    double mx_phase;
+    float mx;
+    float mx_phase;
     for(int bi = 0; bi < 8; bi++){
-      double x = std::abs(c79[si][bi]);
+      float x = std::abs(c79[si][bi]);
       m79[si][bi] = x;
       if(mxi < 0 || x > mx){
         mxi = bi;
@@ -1640,14 +1648,14 @@ soft_c2m(const ffts_t &c79)
     return m79;
 
   // phase around each symbol.
-  std::vector<double> phases(79);
+  std::vector<float> phases(79);
 
   // for each symbol time, median of nearby phases
   for(int si = 0; si < 79; si++){
     std::vector<double> v;
     for(int si1 = si - soft_phase_win; si1 <= si + soft_phase_win; si1++){
       if(si1 >= 0 && si1 < 79){
-        double x = raw_phases[si1];
+        float x = raw_phases[si1];
         v.push_back(x);
       }
     }
@@ -1766,7 +1774,7 @@ bayes(double best_zero, double best_one, int lli,
 void
 soft_decode(const ffts_t &c79, double ll174[])
 {
-  std::vector< std::vector<double> > m79(79);
+  std::vector< std::vector<float> > m79(79);
 
   // m79 = absolute values of c79.
   // still pre-un-gray-coding so we know which
@@ -1857,9 +1865,9 @@ c_soft_decode(const ffts_t &c79x, double ll174[])
   ffts_t c79 = c_convert_to_snr(c79x);
 
   int costas[] = { 3, 1, 4, 0, 6, 5, 2 };
-  std::complex<double> maxes[79];
+  std::complex<float> maxes[79];
   for(int i = 0; i < 79; i++){
-    std::complex<double> m;
+    std::complex<float> m;
     if(i < 7){
       // Costas.
       m = c79[i][costas[i]];
@@ -1881,11 +1889,11 @@ c_soft_decode(const ffts_t &c79x, double ll174[])
     maxes[i] = m;
   }
 
-  std::vector<std::vector<double>> m79(79);
+  std::vector<std::vector<float>> m79(79);
   for(int i = 0; i < 79; i++){
     m79[i].resize(8);
     for(int j = 0; j < 8; j++){
-      std::complex<double> c = c79[i][j];
+      std::complex<float> c = c79[i][j];
       int n = 0;
       double sum = 0;
       for(int k = i - c_soft_win; k <= i + c_soft_win; k++){
@@ -1899,8 +1907,8 @@ c_soft_decode(const ffts_t &c79x, double ll174[])
           // so set m79[i][j] to the distance from the
           // phase/magnitude predicted by surrounding
           // genuine-looking tones.
-          std::complex<double> c1 = maxes[k];
-          std::complex<double> d = c1 - c;
+          std::complex<float> c1 = maxes[k];
+          std::complex<float> d = c1 - c;
           sum += std::abs(d);
         }
         n += 1;

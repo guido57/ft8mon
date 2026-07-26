@@ -16,7 +16,7 @@ one_fft(const std::vector<float> &samples,
 std::vector<float> one_ifft(const std::vector<std::complex<float>> &bins,
                              const char *why);
 
-typedef std::vector< std::vector< std::complex<double> > > ffts_t;
+typedef std::vector< std::vector< std::complex<float> > > ffts_t;
 
 ffts_t ffts(const std::vector<float> &samples, int i0, int block, const char *why);
 

@@ -323,7 +323,7 @@ one_fft_cc(const std::vector<std::complex<double>> &samples, int i0, int block, 
 std::vector<std::complex<double>>
 one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why)
 {
-  (void)why; // unused
+  
   int block = bins.size();
 
   std::map<int, KissC2CIPlan*>& cache = get_kiss_c2ci_cache();
@@ -351,6 +351,8 @@ one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why)
 
   return out;
 }
+
+
 std::vector<float>
 one_ifft(const std::vector<std::complex<float>> &bins, const char *why)
 {
@@ -386,6 +388,7 @@ one_ifft(const std::vector<std::complex<float>> &bins, const char *why)
 
   return out;
 }
+
 //
 // return the analytic signal for signal x,
 // just like scipy.signal.hilbert(), from which
