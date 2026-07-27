@@ -20,3 +20,6 @@ You should see output like this:
 094445 -15 -0.4 1227 AB1HL  NA7K   -10
 ```
 
+# First test
+
+see here https://hackaday.io/project/205224-esp32-hf-qrp-ft8-transceiver/log/249638-new-ft8mon-decoder
