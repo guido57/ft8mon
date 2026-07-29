@@ -916,28 +916,34 @@ go(int npasses)
     for(int hz_frac_i = 0; hz_frac_i < coarse_hz_n; hz_frac_i++){
       // shift down by hz_frac
       double hz_frac = hz_frac_i * (6.25 / coarse_hz_n);
-      std::vector<float> samples1;
+      // std::vector<float> samples1;
+      const std::vector<float>* samples1_ptr;
+      std::vector<float> shifted;
+
       if(hz_frac_i == 0){
         // printf("go: hz_frac=0, using original samples_ for coarse search, PSRAM free=%d\n",
         //         heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        samples1 = samples_;
+        samples1_ptr = &samples_;
       } else {
         // printf("go: calling fft_shift_f on %d points for coarse search, hz_frac=%.2f, PSRAM free=%d\n",
         //         (int) bins.size(), hz_frac, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        samples1 = fft_shift_f(bins, rate_, hz_frac);
+        shifted = fft_shift_f(bins, rate_, hz_frac);
+        samples1_ptr = &shifted;
       }
       
+      const std::vector<float> &samples1 = *samples1_ptr;
+
       // coarse_off_n is the number of fractional timing offsets to try.
       // e.g. if coarse_off_n=4, then we try off_frac=0 (0 seconds), 480 (0.4 seconds), 960 (0.8 seconds), 1440 (0.12 seconds) samples.
-      for(int off_frac_i = 0; off_frac_i < coarse_off_n; off_frac_i++){
+      for(int off_frac_i = 0; off_frac_i < coarse_off_n; off_frac_i++){ 
         int off_frac = off_frac_i * (block / coarse_off_n);
-        // coarse() will look for Costas blocks in the FFT bins of samples1.
         // printf("go: calling ffts() on %d points for coarse search, off_frac=%d, block=%d, PSRAM free=%d\n",
         //         (int) samples1.size(), off_frac, block, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         ffts_t bins = ffts(samples1, off_frac, block, "go2");
 
         // printf("go: calling coarse() on %d bins between block si0=%d and block si1=%d\n",
         //         (int) bins.size(), si0, si1);
+        // coarse() will look for Costas blocks in the FFT bins of samples1.
         std::vector<Strength> oo = coarse(bins, si0, si1);
         // printf("go: coarse() returned %d candidates, off_frac=%d, hz_frac=%.2f\n",
         //         (int) oo.size(), off_frac, hz_frac);
@@ -984,9 +990,10 @@ go(int npasses)
       // skip if we already decoded a signal at this frequency.
       double hz = order[ii].hz_;
       if(already[(int)round(hz / already_hz)])
+        // skip if we already decoded a signal at this offset.
         continue;
 
-      // skip if we already decoded a signal at this offset.
+      // try to decode candidate at hz and off (simbol offset in samples).
       int off = order[ii].off_;
       int ret = one(bins, samples_.size(), hz, off);
       if(ret){
@@ -3274,7 +3281,8 @@ std::mutex FT8::cb_mu_;
 //
 
 void
-entry(float xsamples[], int nsamples, int start, int rate,
+// entry(float xsamples[], int nsamples, int start, int rate,
+entry(const std::vector<int16_t> &s16, int start, int rate,
       double min_hz,
       double max_hz,
       int hints1[],
@@ -3296,8 +3304,8 @@ entry(float xsamples[], int nsamples, int start, int rate,
 
   // std::vector<double> samples(nsamples);
   std::vector<float> samples(192000);
-  for(int i = 0; i < nsamples; i++){
-    samples[i] = xsamples[i];
+  for(int i = 0; i < s16.size(); i++){
+    samples[i] = s16[i] / 32768.0f;
   }
 
   if(min_hz < 0){
