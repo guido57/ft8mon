@@ -16,8 +16,8 @@ void* operator new(size_t size) {
     void* p = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
 
     if(p){
-      printf("Allocated %d bytes in PSRAM at %p. Remaining: %d bytes\n", size, p,
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+      // printf("Allocated %d bytes in PSRAM at %p. Remaining: %d bytes\n", size, p,
+      //       heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     }
 
     if (!p) {
@@ -161,25 +161,25 @@ hcb(int *a91, double hz0, double hz1, double off,
   gmtime_r(&saved_cycle_start, &result);
 
   char output_buf[256];
-  // snprintf(output_buf, sizeof(output_buf), "%.3f %d %02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
-  //        now() - start_now,
-  //        count++,
-  //        result.tm_hour,
-  //        result.tm_min,
-  //        result.tm_sec,
-  //        (int)snr,
-  //        correct_bits,
-  //        off - 0.5f,
-  //        hz0,
-  //        msg.c_str());
-  snprintf(output_buf, sizeof(output_buf), "%02d%02d%02d %3d %5.2f %6.1f ~ %s\n",
+  snprintf(output_buf, sizeof(output_buf), "%.3f %d %02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
+         now() - start_now,
+         count++,
          result.tm_hour,
          result.tm_min,
          result.tm_sec,
          (int)snr,
+         correct_bits,
          off - 0.5f,
          hz0,
          msg.c_str());
+  // snprintf(output_buf, sizeof(output_buf), "%02d%02d%02d %3d %5.2f %6.1f ~ %s\n",
+  //        result.tm_hour,
+  //        result.tm_min,
+  //        result.tm_sec,
+  //        (int)snr,
+  //        off - 0.5f,
+  //        hz0,
+  //        msg.c_str());
 
 #ifdef ESP32
   // Print to ESP32 Serial monitor
@@ -210,14 +210,14 @@ void run_decoder(const std::vector<int16_t> &s16, int rate) {
   cycle_mu.unlock();
 
   // Use float, because entry() and the FFT engine explicitly require float*
-  std::vector<float> s(s16.size());
+  // std::vector<float> s(s16.size());
   
-  // Convert int16_t directly to float
-  for(size_t i = 0; i < s16.size(); i++) {
-    s[i] = (float)s16[i] / 32768.0f;
-  }
+  // // Convert int16_t directly to float
+  // for(size_t i = 0; i < s16.size(); i++) {
+  //   s[i] = (float)s16[i] / 32768.0f;
+  // }
   
-  entry(s.data(), s.size(), 0.5 * rate, rate,
+  entry(s16, 0.5 * rate, rate,
         150,
         3600, 
         hints, hints, budget, budget, hcb

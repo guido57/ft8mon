@@ -8,6 +8,7 @@
 
 #include "kiss_fftr.h"
 #include "_kiss_fft_guts.h"
+#include <stdint.h>
 
 struct kiss_fftr_state{
     kiss_fft_cfg substate;
@@ -18,46 +19,181 @@ struct kiss_fftr_state{
 #endif
 };
 
-kiss_fftr_cfg kiss_fftr_alloc(int nfft,int inverse_fft,void * mem,size_t * lenmem)
+kiss_fftr_cfg kiss_fftr_alloc(int nfft,
+                              int inverse_fft,
+                              void *mem,
+                              size_t *lenmem)
 {
     int i;
     kiss_fftr_cfg st = NULL;
-    size_t subsize = 0, memneeded;
+    size_t subsize = 0;
+    size_t memneeded;
 
     if (nfft & 1) {
-        fprintf(stderr,"Real FFT optimization must be even.\n");
+        fprintf(stderr,
+                "Real FFT optimization must be even.\n");
         return NULL;
     }
+
+    /*
+     * Real FFT uses a complex FFT of size nfft/2
+     */
     nfft >>= 1;
 
-    kiss_fft_alloc (nfft, inverse_fft, NULL, &subsize);
-    memneeded = sizeof(struct kiss_fftr_state) + subsize + sizeof(kiss_fft_cpx) * ( nfft * 3 / 2);
+
+    /*
+     * Get size of the inner complex FFT structure
+     */
+    kiss_fft_alloc(nfft, inverse_fft, NULL, &subsize);
+
+
+    /*
+     * Memory layout:
+     *
+     * +-------------------------+
+     * | kiss_fftr_state          |
+     * +-------------------------+
+     * | alignment padding       |
+     * +-------------------------+
+     * | kiss_fft_state           |
+     * +-------------------------+
+     * | tmpbuf[nfft]             |
+     * +-------------------------+
+     * | super_twiddles[nfft/2]   |
+     * +-------------------------+
+     *
+     */
+
+    memneeded =
+        sizeof(struct kiss_fftr_state)
+        + 15
+        + subsize
+        + sizeof(kiss_fft_cpx) * nfft
+        + sizeof(kiss_fft_cpx) * (nfft / 2);
+
+
+    // printf("===================== kiss_fftr_alloc ====================\n");
+    // printf("nfft=%d\n", nfft);
+    // printf("sizeof(kiss_fftr_state)=%zu\n",
+    //        sizeof(struct kiss_fftr_state));
+    // printf("sizeof(kiss_fft_state)=%zu\n",
+    //        sizeof(struct kiss_fft_state));
+    // printf("subsize=%zu\n", subsize);
+    // printf("tmpbuf bytes=%zu\n",
+    //        sizeof(kiss_fft_cpx) * nfft);
+    // printf("super_twiddles bytes=%zu\n",
+    //        sizeof(kiss_fft_cpx) * (nfft / 2));
+    // printf("memneeded=%zu\n", memneeded);
+    // printf("==========================================================\n");
+
 
     if (lenmem == NULL) {
-        st = (kiss_fftr_cfg) KISS_FFT_MALLOC (memneeded);
+
+        st = (kiss_fftr_cfg) KISS_FFT_MALLOC(memneeded);
+
+        printf("st=%p\n", st);
+
     } else {
+
         if (*lenmem >= memneeded)
             st = (kiss_fftr_cfg) mem;
+
         *lenmem = memneeded;
     }
+
+
     if (!st)
         return NULL;
 
-    st->substate = kiss_fft_alloc(nfft, inverse_fft, NULL, NULL);
+
+
+    /*
+     * Allocate the inner complex FFT state
+     */
+
+    char *ptr = (char *)st + sizeof(struct kiss_fftr_state);
+
+
+    /*
+     * Align to 8 bytes
+     */
+    uintptr_t aligned =
+        ((uintptr_t)ptr + 7) & ~(uintptr_t)7;
+
+
+    st->substate =
+        kiss_fft_alloc(nfft,
+                       inverse_fft,
+                       (void *)aligned,
+                       &subsize);
+
+
     if (!st->substate) {
-        if (lenmem == NULL) KISS_FFT_FREE(st);
+
+        if (lenmem == NULL)
+            KISS_FFT_FREE(st);
+
         return NULL;
     }
-    st->tmpbuf = (kiss_fft_cpx *) (((char *) st) + sizeof(struct kiss_fftr_state));
-    st->super_twiddles = st->tmpbuf + nfft;
 
-    for (i = 0; i < nfft/2; ++i) {
+
+
+    /*
+     * Place tmpbuf after the FFT state
+     */
+    ptr = (char *)aligned + subsize;
+
+    uintptr_t tmpaligned =
+        ((uintptr_t)ptr + 7) & ~(uintptr_t)7;
+
+    st->tmpbuf = (kiss_fft_cpx *)tmpaligned;
+
+    /*
+     * Place twiddle table after tmpbuf
+     */
+    st->super_twiddles =
+        st->tmpbuf + nfft;
+
+
+
+//     printf("---------- final layout ----------------\n");
+
+//     printf("allocated start       = %p\n", st);
+//     printf("allocated end         = %p\n",
+//         (char *)st + memneeded);
+
+//     printf("substate end          = %p\n",
+//         (char *)aligned + subsize);
+
+//     printf("tmpbuf end            = %p\n",
+//         (char *)st->tmpbuf +
+//         sizeof(kiss_fft_cpx) * nfft);
+
+//     printf("super_twiddles end    = %p\n",
+//         (char *)st->super_twiddles +
+//         sizeof(kiss_fft_cpx) * (nfft/2));
+
+// printf("----------------------------------------\n");    printf("----------------------------------------\n");
+
+
+
+    /*
+     * Generate super twiddle factors
+     */
+    for (i = 0; i < nfft / 2; i++) {
+
         double phase =
-            -3.14159265358979323846264338327 * ((double) (i+1) / nfft + .5);
+            -3.1415926535897932384626433832795 *
+            ((double)(i + 1) / nfft + 0.5);
+
         if (inverse_fft)
             phase *= -1;
-        kf_cexp (st->super_twiddles+i,phase);
+
+        kf_cexp(st->super_twiddles + i,
+                phase);
     }
+
+
     return st;
 }
 

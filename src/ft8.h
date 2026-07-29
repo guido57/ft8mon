@@ -14,7 +14,8 @@ extern "C" {
     double off;
     int *bits; // 174
   };
-  void entry(float xsamples[], int nsamples, int start, int rate,
+  // void entry(float xsamples[], int nsamples, int start, int rate,
+  void entry(const std::vector<int16_t> &s16, int start, int rate,
              double min_hz,
              double max_hz,
              int hints1[], int hints2[], double time_left,
