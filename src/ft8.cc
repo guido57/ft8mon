@@ -78,8 +78,8 @@ int ncoarse = 1; // number of offsets per hz produced by coarse()
 int ncoarse_blocks = 1;
 double tminus = 2.2; // start looking at 0.5 - tminus seconds
 double tplus = 2.4;
-int coarse_off_n = 4;
-int coarse_hz_n = 4;
+int coarse_off_n = 1;
+int coarse_hz_n = 1;
 double already_hz = 27;
 double overlap = 20;
 int overlap_edges = 0;
@@ -908,7 +908,7 @@ go(int npasses)
     // and down_v7_f() to 200 sps.
     // printf("go: calling one_fft on %d points for coarse search, PSRAM free=%d\n",
     //        (int) samples_.size(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    std::vector<std::complex<float>> bins = one_fft(samples_, 0, samples_.size(),
+    std::vector<std::complex<float>> main_bins = one_fft(samples_, 0, samples_.size(),
                                                      "go1", 0);
 
     // coarse_hz_n is the number of fractional hz shifts to try.   
@@ -927,7 +927,7 @@ go(int npasses)
       } else {
         // printf("go: calling fft_shift_f on %d points for coarse search, hz_frac=%.2f, PSRAM free=%d\n",
         //         (int) bins.size(), hz_frac, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        shifted = fft_shift_f(bins, rate_, hz_frac);
+        shifted = fft_shift_f(main_bins, rate_, hz_frac);
         samples1_ptr = &shifted;
       }
       
@@ -995,7 +995,7 @@ go(int npasses)
 
       // try to decode candidate at hz and off (simbol offset in samples).
       int off = order[ii].off_;
-      int ret = one(bins, samples_.size(), hz, off);
+      int ret = one(main_bins, samples_.size(), hz, off);
       if(ret){
         if(ret == 2){
           new_decodes++;
