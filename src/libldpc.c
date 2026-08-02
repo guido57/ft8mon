@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "arrays.h"
+#include "libldpc.h"
 
 // double, long double, __float128
 #define REAL double
@@ -47,13 +48,157 @@ ldpc_check(int codeword[])
   return score;
 }
 
+
 // llcodeword is 174 log-likelihoods.
 // plain is a return value, 174 ints, to be 0 or 1.
 // iters is how hard to try.
 // ok is the number of parity checks that worked out,
 // ok == 83 means success.
+
 void
-ldpc_decode(double llcodeword[], int iters, int plain[], int *ok)
+ldpc_decode(float llcodeword[], int iters, int plain[], int *ok, ldpc_workspace_t *ws)
+{
+  // static float m[83][174];
+  // static float e[83][174];
+  // float codeword[174];
+  // int best_score = -1;
+  // int best_cw[174];
+
+  float (*m)[174];
+  float (*e)[174];
+  float *codeword;
+  int *best_cw;
+  int * cw;
+  // int best_score = -1;
+
+  if(ws){
+    m = ws->m;
+    e = ws->e;
+    codeword = ws->codeword;
+    best_cw = ws->best_cw;
+    // best_score = ws->best_score;
+    cw = ws->cw;
+    ws->best_score = -1;
+  }else{
+    printf("ldpc_decode: ws is NULL\n");
+    return;
+  }
+
+  // to translate from log-likelihood x to probability p,
+  // p = e**x / (1 + e**x)
+  // it's P(zero), not P(one).
+  for(int i = 0; i < 174; i++){
+    float ex = expf(llcodeword[i]);
+    float p = ex / (1.0f + ex);
+    codeword[i] = p;
+  }
+  
+  // m[j][i] tells the j'th check bit the P(zero) of
+  // each of its codeword inputs, based on check
+  // bits other than j.
+  for(int i = 0; i < 174; i++)
+    for(int j = 0; j < 83; j++)
+      m[j][i] = codeword[i];
+
+  // e[j][i]: each check j tells each codeword bit i the
+  // probability of the bit being zero based
+  // on the *other* bits contributing to that check.
+  for(int i = 0; i < 174; i++)
+    for(int j = 0; j < 83; j++)
+      e[j][i] = 0.0;
+
+  for(int iter = 0; iter < iters; iter++){
+    
+    for(int j = 0; j < 83; j++){
+      for(int ii1 = 0; ii1 < 7; ii1++){
+        int i1 = Nm[j][ii1] - 1;
+        if(i1 < 0)
+          continue;
+        float a = 1.0;
+        for(int ii2 = 0; ii2 < 7; ii2++){
+          int i2 = Nm[j][ii2] - 1;
+          if(i2 >= 0 && i2 != i1){
+            // tmp ranges from 1.0 to -1.0, for
+            // definitely zero to definitely one.
+            float tmp = 1.0 - 2.0*(1.0-m[j][i2]);
+            a *= tmp;
+          }
+        }
+        // a ranges from 1.0 to -1.0, meaning
+        // bit i1 should be zero .. one.
+        // so e[j][i1] will be 0.0 .. 1.0 meaning
+        // bit i1 is one .. zero.
+        float tmp = 0.5 + 0.5*a;
+        e[j][i1] = tmp;
+      }
+    }
+          
+    // int cw[174];
+    for(int i = 0; i < 174; i++){
+      float q0 = codeword[i];
+      float q1 = 1.0 - q0;
+      for(int j = 0; j < 3; j++){
+        int j2 = Mn[i][j] - 1;
+        q0 *= e[j2][i];
+        q1 *= 1.0 - e[j2][i];
+      }
+      // REAL p = q0 / (q0 + q1);
+      float p;
+      if(q0 == 0.0){
+        p = 1.0;
+      } else {
+        p = 1.0 / (1.0 + (q1 / q0));
+      }
+      cw[i] = (p <= 0.5);
+    }
+    int score = ldpc_check(cw);
+    if(score == 83){
+      for(int i = 0; i < 174; i++)
+        plain[i] = cw[i];
+      *ok = 83;
+      return;
+    }
+
+    if(score > ws->best_score){
+      for(int i = 0; i < 174; i++)
+        best_cw[i] = cw[i];
+      ws->best_score = score;
+    }
+
+    for(int i = 0; i < 174; i++){
+      for(int ji1 = 0; ji1 < 3; ji1++){
+        int j1 = Mn[i][ji1] - 1;
+        float q0 = codeword[i];
+        float q1 = 1.0 - q0;
+        for(int ji2 = 0; ji2 < 3; ji2++){
+          int j2 = Mn[i][ji2] - 1;
+          if(j1 != j2){
+            q0 *= e[j2][i];
+            q1 *= 1.0 - e[j2][i];
+          }
+        }
+        // REAL p = q0 / (q0 + q1);
+        float p;
+        if(q0 == 0.0){
+          p = 1.0;
+        } else {
+          p = 1.0 / (1.0 + (q1 / q0));
+        }
+        m[j1][i] = p;
+      }
+    }
+  }
+
+  // decode didn't work, return best guess.
+  for(int i = 0; i < 174; i++)
+    plain[i] = best_cw[i];
+
+  *ok = ws->best_score;
+}
+
+
+void
+ldpc_decode_REAL(float llcodeword[], int iters, int plain[], int *ok)
 {
   REAL m[83][174];
   REAL e[83][174];
