@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
+#include <cmath>
 
 extern int gen_sys[174][91];
 
@@ -43,7 +45,7 @@ ldpc_encode(int plain[91], int codeword[174])
 // ldpc-encode xplain; how close is the
 // result to what we received?
 double
-osd_score(int xplain[91], double ll174[174])
+osd_score(int xplain[91], const float ll174[174])
 {
   int xcode[174];
   ldpc_encode(xplain, xcode);
@@ -103,7 +105,7 @@ matmul(int a[91][91], int b[91], int c[91])
 // returns 0 or 1, with decoded plain bits in out91[].
 // and actual depth used in *out_depth.
 int
-osd_decode(double codeword[174], int depth, int out[91], int *out_depth)
+osd_decode(const float codeword[174], int depth, int out[91], int *out_depth)
 {
   // strength = abs(codeword)
   double strength[174];
@@ -117,9 +119,9 @@ osd_decode(double codeword[174], int depth, int out[91], int *out_depth)
   for(int i = 0; i < 174; i++)
     which[i] = i;
   std::sort(which.begin(),
-            which.end(),
+          which.end(),
             [ = ](int a, int b) {
-              return strength[a] > strength[b];
+                return strength[a] > strength[b];
             } );
 
   // gen_sys[174 rows][91 cols] has a row per each of the 174 codeword bits,
@@ -145,7 +147,7 @@ osd_decode(double codeword[174], int depth, int out[91], int *out_depth)
   int ok = 0;
   gauss_jordan(91, 174, b, xwhich, &ok);
   if(ok == 0){
-    fprintf(stderr, "gauss_jordan failed\n");
+    //  fprintf(stderr, "gauss_jordan failed\n");
   }
 
   int gen1_inv[91][91];

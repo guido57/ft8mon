@@ -46,54 +46,54 @@ void operator delete(void* p) noexcept {
 
 #else
 
-#include <new>
-#include <cstdio>
-#include <cstdlib>
+// #include <new>
+// #include <cstdio>
+// #include <cstdlib>
 
-void* operator new(size_t size) {
+// void* operator new(size_t size) {
 
-    void* p = std::malloc(size);
+//     void* p = std::malloc(size);
 
-    if (!p) {
-        throw std::bad_alloc();
-    }
+//     if (!p) {
+//         throw std::bad_alloc();
+//     }
 
-    if(size > 1000000) {
-        // printf("operator new: large allocation: %zu bytes at %p\n", size, p);
-    } else {
-        // printf("Linux allocation: %zu bytes at %p\n", size, p);
-    }
-    // printf("Linux allocation: %zu bytes at %p\n", size, p);
+//     if(size > 1000000) {
+//         // printf("operator new: large allocation: %zu bytes at %p\n", size, p);
+//     } else {
+//         // printf("Linux allocation: %zu bytes at %p\n", size, p);
+//     }
+//     // printf("Linux allocation: %zu bytes at %p\n", size, p);
 
-    return p;
-}
-
-
-void operator delete(void* p) noexcept {
-    //printf("Linux free large allocation: %p\n", p);
-    std::free(p);
-}
+//     return p;
+// }
 
 
-// Needed since C++14
-void* operator new[](size_t size) {
-
-    void* p = std::malloc(size);
-
-    if (!p) {
-        throw std::bad_alloc();
-    }
-
-    // printf("Linux array allocation: %zu bytes at %p\n", size, p);
-
-    return p;
-}
+// void operator delete(void* p) noexcept {
+//     //printf("Linux free large allocation: %p\n", p);
+//     std::free(p);
+// }
 
 
-void operator delete[](void* p) noexcept {
-    // printf("Linux array free: %p\n", p);
-    std::free(p);
-}
+// // Needed since C++14
+// void* operator new[](size_t size) {
+
+//     void* p = std::malloc(size);
+
+//     if (!p) {
+//         throw std::bad_alloc();
+//     }
+
+//     // printf("Linux array allocation: %zu bytes at %p\n", size, p);
+
+//     return p;
+// }
+
+
+// void operator delete[](void* p) noexcept {
+//     // printf("Linux array free: %p\n", p);
+//     std::free(p);
+// }
 
 
 #endif
@@ -161,7 +161,7 @@ hcb(int *a91, double hz0, double hz1, double off,
   gmtime_r(&saved_cycle_start, &result);
 
   char output_buf[256];
-  snprintf(output_buf, sizeof(output_buf), "%.3f %d %02d%02d%02d %3d %3d %5.2f %6.1f %s\n",
+  snprintf(output_buf, sizeof(output_buf), "%.3f %d %02d%02d%02d %3d %3d %5.4f %6.1f %s\n",
          now() - start_now,
          count++,
          result.tm_hour,

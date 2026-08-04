@@ -56,7 +56,7 @@ ldpc_check(int codeword[])
 // ok == 83 means success.
 
 void
-ldpc_decode(float llcodeword[], int iters, int plain[], int *ok, ldpc_workspace_t *ws)
+ldpc_decode(const float llcodeword[], int iters, int plain[], int *ok, ldpc_workspace_t *ws)
 {
   // static float m[83][174];
   // static float e[83][174];
@@ -481,7 +481,8 @@ ft8_crc(int msg1[], int msglen, int out[14])
 // m's right half should start out as zeros.
 // m's upper-right quarter will be the desired inverse.
 void
-gauss_jordan(int rows, int cols, int m[174][2*91], int which[91], int *ok)
+gauss_jordan(int rows, int cols, int m[174][2*91], int * which, int *ok)
+// gauss_jordan(int rows, int cols, int m[174][2*91], int which[91], int *ok)
 // gauss_jordan(int rows, int cols, int m[cols][2*rows], int which[rows], int *ok)
 {
   *ok = 0;

@@ -33,7 +33,8 @@
 #else
 #define heap_caps_get_free_size(x) (0)
 #endif
-
+#include "libldpc.h"
+#include "osd.h"
 
 // 1920-point FFT at 12000 samples/second
 // 6.25 Hz spacing, 0.16 seconds/symbol
@@ -116,10 +117,10 @@ int c_soft_win = 2;
 int bayes_how = 1;
 
 // Tell C++ that these functions live in C files
-extern "C" {
-    void ft8_crc(int msg1[], int msglen, int out[14]);
-    void ldpc_decode(double *llr, int max_iter, int *bits, int *nerrors);
-}
+// extern "C" {
+//     void ft8_crc(int msg1[], int msglen, int out[14]);
+//     void ldpc_decode(double *llr, int max_iter, int *bits, int *nerrors);
+// }
 
 //
 // return a Hamming window of length n.
@@ -447,6 +448,8 @@ public:
   const float *hack_data_;
   std::vector<std::complex<float>> hack_bins_;  // for debugging, to see what the FFT looks like
   
+  ldpc_workspace_t *ws; // workspace for LDPC decoding
+
   FT8(std::vector<float> &samples,
       double min_hz,
       double max_hz,
@@ -464,6 +467,7 @@ public:
     final_deadline_ = final_deadline;
     cb_ = cb;
     down_hz_ = 0;
+    ws = new ldpc_workspace_t;
 
     for(int i = 0; hints1[i]; i++){
       hints1_.push_back(hints1[i]);
@@ -974,18 +978,18 @@ go(int npasses)
       
       // stop if we are out of time, or if we have enough decodes.
       double tt = now();
-      if(ii > 0 &&
-         tt > deadline &&
-         (tt > deadline_ || new_decodes >= pass_threshold) &&
-         (pass_ < npasses-1 || tt > final_deadline_)){
-          // printf("go: TIMEOUT stopping at candidate %d of %d, time %.2f > deadline %.2f, new_decodes=%d >= pass_threshold=%d, pass_=%d, npasses=%d, final_deadline_=%f\n",
-          //         ii, (int) order.size(),
-          //         tt, deadline,
-          //         new_decodes, pass_threshold,
-          //         pass_, npasses,
-          //         final_deadline_); 
-        break;
-      }
+      // if(ii > 0 &&
+      //    tt > deadline &&
+      //    (tt > deadline_ || new_decodes >= pass_threshold) &&
+      //    (pass_ < npasses-1 || tt > final_deadline_)){
+      //     // printf("go: TIMEOUT stopping at candidate %d of %d, time %.2f > deadline %.2f, new_decodes=%d >= pass_threshold=%d, pass_=%d, npasses=%d, final_deadline_=%f\n",
+      //     //         ii, (int) order.size(),
+      //     //         tt, deadline,
+      //     //         new_decodes, pass_threshold,
+      //     //         pass_, npasses,
+      //     //         final_deadline_); 
+      //   break;
+      // }
 
       // skip if we already decoded a signal at this frequency.
       double hz = order[ii].hz_;
@@ -1781,7 +1785,7 @@ bayes(double best_zero, double best_one, int lli,
 // c79 is 79x8 complex tones, before un-gray-coding.
 //
 void
-soft_decode(const ffts_t &c79, double ll174[])
+soft_decode(const ffts_t &c79, float ll174[])
 {
   std::vector< std::vector<float> > m79(79);
 
@@ -1869,7 +1873,7 @@ soft_decode(const ffts_t &c79, double ll174[])
 // c79 is 79x8 complex tones, before un-gray-coding.
 //
 void
-c_soft_decode(const ffts_t &c79x, double ll174[])
+c_soft_decode(const ffts_t &c79x, float ll174[])
 {
   ffts_t c79 = c_convert_to_snr(c79x);
 
@@ -2034,7 +2038,7 @@ extract_bits(const std::vector<int> &syms, const std::vector<double> str)
 // correlations for each possible pair and using the max.
 void
 soft_decode_pairs(const ffts_t &m79x,
-                  double ll174[])
+                  float ll174[])
 {
   ffts_t m79 = c_convert_to_snr(m79x);
                        
@@ -2140,7 +2144,7 @@ soft_decode_pairs(const ffts_t &m79x,
 
 void
 soft_decode_triples(const ffts_t &m79x,
-                    double ll174[])
+                    float ll174[])
 {
   ffts_t m79 = c_convert_to_snr(m79x);
   
@@ -2270,15 +2274,15 @@ soft_decode_triples(const ffts_t &m79x,
 // on success, puts corrected 174 bits into a174[].
 //
 int
-decode(const double ll174[], int a174[], int use_osd, std::string &comment)
+decode(const float ll174[], int a174[], int use_osd, std::string &comment)
 {
-  void ldpc_decode(double llcodeword[], int iters, int plain[], int *ok);
-  void ldpc_decode_log(double codeword[], int iters, int plain[], int *ok);
+  // void ldpc_decode(double llcodeword[], int iters, int plain[], int *ok);
+  // void ldpc_decode_log(double codeword[], int iters, int plain[], int *ok);
 
   int plain[174]; // will be 0/1 bits.
   int ldpc_ok = 0;     // 83 will mean success.
 
-  ldpc_decode((double*)ll174, ldpc_iters, plain, &ldpc_ok);
+  ldpc_decode(ll174, ldpc_iters, plain, &ldpc_ok, ws);
 
   int ok_thresh = 83; // 83 is perfect
   if(ldpc_ok >= ok_thresh){
@@ -2293,17 +2297,19 @@ decode(const double ll174[], int a174[], int use_osd, std::string &comment)
   }
 
   if(use_osd && osd_depth >= 0 && ldpc_ok >= osd_ldpc_thresh){
-    extern int osd_decode(double codeword[174], int depth, int out[91], int*);
-    extern void ldpc_encode(int plain[91], int codeword[174]);
+    // extern int osd_decode(double codeword[174], int depth, int out[91], int*);
+    // extern void ldpc_encode(int plain[91], int codeword[174]);
 
     int oplain[91];
     int got_depth = -1;
-    int osd_ok = osd_decode((double*)ll174, osd_depth, oplain, &got_depth);
+    int osd_ok = osd_decode(ll174, osd_depth, oplain, &got_depth);
     if(osd_ok){
       // reconstruct all 174.
       comment += "OSD-" + std::to_string(got_depth) + "-" + std::to_string(ldpc_ok);
       ldpc_encode(oplain, a174);
-      return 1;
+       if(check_crc(a174)){
+        return 1;
+      }
     }
   }
   
@@ -2758,7 +2764,7 @@ one_iter1(const std::vector<float> &samples200x,
     }
   }
 
-  double ll174[174];
+  float ll174[174];
 
   if(soft_ones){
     if(soft_ones == 1){
@@ -2773,7 +2779,7 @@ one_iter1(const std::vector<float> &samples200x,
   }
 
   if(soft_pairs){
-    double p174[174];
+    float p174[174];
     soft_decode_pairs(m79, p174);
     int ret = try_decode(samples200, p174, best_hz, best_off,
                          hz0_for_cb, hz1_for_cb, 1, "", m79);
@@ -2784,7 +2790,7 @@ one_iter1(const std::vector<float> &samples200x,
   }
 
   if(soft_triples){
-    double p174[174];
+    float p174[174];
     soft_decode_triples(m79, p174);
     int ret = try_decode(samples200, p174, best_hz, best_off,
                          hz0_for_cb, hz1_for_cb, 1, "", m79);
@@ -2799,7 +2805,7 @@ one_iter1(const std::vector<float> &samples200x,
         // just CQ
         continue;
       }
-      double n174[174];
+      float n174[174];
       for(int i = 0; i < 174; i++){
         if(i < 28){
           int bit = h & (1 << 27);
@@ -2824,7 +2830,7 @@ one_iter1(const std::vector<float> &samples200x,
   if(use_hints == 1){
     for(int hi = 0; hi < (int)hints2_.size(); hi++){
       int h = hints2_[hi]; // 28-bit number, goes in ll174 29:29+28
-      double n174[174];
+      float n174[174];
       for(int i = 0; i < 174; i++){
         if(i >= 29 && i < 29+28){
           int bit = h & (1 << 27);
@@ -3168,7 +3174,7 @@ subtract(const std::vector<int> re79,
 //
 int
 try_decode(const std::vector<float> &samples200,
-           double ll174[174],
+           float ll174[174],
            double best_hz, int best_off_samples, double hz0_for_cb, double hz1_for_cb,
            int use_osd, const char *comment1,
            const ffts_t &m79)

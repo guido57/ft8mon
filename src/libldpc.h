@@ -19,7 +19,7 @@ typedef struct {
 extern "C" {
 #endif
     void ft8_crc(int msg1[], int msglen, int out[14]);
-    void ldpc_decode(float *llr, int max_iter, int *bits, int *nerrors, ldpc_workspace_t *ws);
+    void ldpc_decode(const float *llr, int max_iter, int *bits, int *nerrors, ldpc_workspace_t *ws);
     
 
 #ifdef __cplusplus
