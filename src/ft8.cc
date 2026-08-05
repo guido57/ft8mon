@@ -78,8 +78,8 @@ int ncoarse = 1; // number of offsets per hz produced by coarse()
 int ncoarse_blocks = 1;
 double tminus = 2.2; // start looking at 0.5 - tminus seconds
 double tplus = 2.4;
-int coarse_off_n = 1;
-int coarse_hz_n = 1;
+int coarse_off_n = 2;
+int coarse_hz_n = 2;
 double already_hz = 27;
 double overlap = 20;
 int overlap_edges = 0;
@@ -118,7 +118,7 @@ int bayes_how = 1;
 // Tell C++ that these functions live in C files
 extern "C" {
     void ft8_crc(int msg1[], int msglen, int out[14]);
-    void ldpc_decode(double *llr, int max_iter, int *bits, int *nerrors);
+    void ldpc_decode(float *llr, int max_iter, int *bits, int *nerrors);
 }
 
 //
@@ -1781,7 +1781,7 @@ bayes(double best_zero, double best_one, int lli,
 // c79 is 79x8 complex tones, before un-gray-coding.
 //
 void
-soft_decode(const ffts_t &c79, double ll174[])
+soft_decode(const ffts_t &c79, float ll174[])
 {
   std::vector< std::vector<float> > m79(79);
 
@@ -1869,7 +1869,7 @@ soft_decode(const ffts_t &c79, double ll174[])
 // c79 is 79x8 complex tones, before un-gray-coding.
 //
 void
-c_soft_decode(const ffts_t &c79x, double ll174[])
+c_soft_decode(const ffts_t &c79x, float ll174[])
 {
   ffts_t c79 = c_convert_to_snr(c79x);
 
@@ -2270,15 +2270,20 @@ soft_decode_triples(const ffts_t &m79x,
 // on success, puts corrected 174 bits into a174[].
 //
 int
-decode(const double ll174[], int a174[], int use_osd, std::string &comment)
+decode(const float ll174[], int a174[], int use_osd, std::string &comment)
 {
-  void ldpc_decode(double llcodeword[], int iters, int plain[], int *ok);
+  void ldpc_decode(float llcodeword[], int iters, int plain[], int *ok);
   void ldpc_decode_log(double codeword[], int iters, int plain[], int *ok);
 
   int plain[174]; // will be 0/1 bits.
   int ldpc_ok = 0;     // 83 will mean success.
 
-  ldpc_decode((double*)ll174, ldpc_iters, plain, &ldpc_ok);
+  float ll174f[174];
+  for(int i = 0; i < 174; i++){
+    ll174f[i] = (float) ll174[i];
+  }
+
+  ldpc_decode(ll174f, ldpc_iters, plain, &ldpc_ok);
 
   int ok_thresh = 83; // 83 is perfect
   if(ldpc_ok >= ok_thresh){
@@ -2758,7 +2763,7 @@ one_iter1(const std::vector<float> &samples200x,
     }
   }
 
-  double ll174[174];
+  float ll174[174];
 
   if(soft_ones){
     if(soft_ones == 1){
@@ -2775,18 +2780,24 @@ one_iter1(const std::vector<float> &samples200x,
   if(soft_pairs){
     double p174[174];
     soft_decode_pairs(m79, p174);
-    int ret = try_decode(samples200, p174, best_hz, best_off,
+    float p174f[174];
+    for(int i = 0; i < 174; i++)
+      p174f[i] = (float) p174[i];
+    int ret = try_decode(samples200, p174f, best_hz, best_off,
                          hz0_for_cb, hz1_for_cb, 1, "", m79);
     if(ret)
       return ret;
     if(soft_ones == 0)
-      memcpy(ll174, p174, sizeof(ll174));
+      memcpy(ll174, p174f, sizeof(ll174));
   }
 
   if(soft_triples){
     double p174[174];
     soft_decode_triples(m79, p174);
-    int ret = try_decode(samples200, p174, best_hz, best_off,
+    float p174f[174];
+    for(int i = 0; i < 174; i++)
+      p174f[i] = (float) p174[i];
+    int ret = try_decode(samples200, p174f, best_hz, best_off,
                          hz0_for_cb, hz1_for_cb, 1, "", m79);
     if(ret)
       return ret;
@@ -2813,7 +2824,10 @@ one_iter1(const std::vector<float> &samples200x,
           n174[i] = ll174[i];
         }
       }
-      int ret = try_decode(samples200, n174, best_hz, best_off,
+      float n174f[174];
+      for(int i = 0; i < 174; i++)
+        n174f[i] = (float) n174[i]; 
+      int ret = try_decode(samples200, n174f, best_hz, best_off,
                            hz0_for_cb, hz1_for_cb, 0, "hint1", m79);
       if(ret){
         return ret;
@@ -2838,7 +2852,10 @@ one_iter1(const std::vector<float> &samples200x,
           n174[i] = ll174[i];
         }
       }
-      int ret = try_decode(samples200, n174, best_hz, best_off,
+      float n174f[174];
+      for(int i = 0; i < 174; i++)
+        n174f[i] = (float) n174[i];
+      int ret = try_decode(samples200, n174f, best_hz, best_off,
                            hz0_for_cb, hz1_for_cb, 0, "hint2", m79);
       if(ret){
         return ret;
@@ -3168,7 +3185,7 @@ subtract(const std::vector<int> re79,
 //
 int
 try_decode(const std::vector<float> &samples200,
-           double ll174[174],
+           float ll174[174],
            double best_hz, int best_off_samples, double hz0_for_cb, double hz1_for_cb,
            int use_osd, const char *comment1,
            const ffts_t &m79)

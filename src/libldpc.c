@@ -53,11 +53,11 @@ ldpc_check(int codeword[])
 // ok is the number of parity checks that worked out,
 // ok == 83 means success.
 void
-ldpc_decode(double llcodeword[], int iters, int plain[], int *ok)
+ldpc_decode(float llcodeword[], int iters, int plain[], int *ok)
 {
-  REAL m[83][174];
-  REAL e[83][174];
-  REAL codeword[174];
+  float m[83][174];
+  float e[83][174];
+  float codeword[174];
   int best_score = -1;
   int best_cw[174];
 
@@ -65,8 +65,8 @@ ldpc_decode(double llcodeword[], int iters, int plain[], int *ok)
   // p = e**x / (1 + e**x)
   // it's P(zero), not P(one).
   for(int i = 0; i < 174; i++){
-    REAL ex = expl(llcodeword[i]);
-    REAL p = ex / (1.0 + ex);
+    float ex = expf(llcodeword[i]);
+    float p = ex / (1.0f + ex);
     codeword[i] = p;
   }
   
@@ -91,13 +91,13 @@ ldpc_decode(double llcodeword[], int iters, int plain[], int *ok)
         int i1 = Nm[j][ii1] - 1;
         if(i1 < 0)
           continue;
-        REAL a = 1.0;
+        float a = 1.0;
         for(int ii2 = 0; ii2 < 7; ii2++){
           int i2 = Nm[j][ii2] - 1;
           if(i2 >= 0 && i2 != i1){
             // tmp ranges from 1.0 to -1.0, for
             // definitely zero to definitely one.
-            double tmp = 1.0 - 2.0*(1.0-m[j][i2]);
+            float tmp = 1.0f - 2.0f*(1.0f-m[j][i2]);
             a *= tmp;
           }
         }
@@ -105,26 +105,26 @@ ldpc_decode(double llcodeword[], int iters, int plain[], int *ok)
         // bit i1 should be zero .. one.
         // so e[j][i1] will be 0.0 .. 1.0 meaning
         // bit i1 is one .. zero.
-        REAL tmp = 0.5 + 0.5*a;
+        float tmp = 0.5f + 0.5f*a;
         e[j][i1] = tmp;
       }
     }
           
     int cw[174];
     for(int i = 0; i < 174; i++){
-      REAL q0 = codeword[i];
-      REAL q1 = 1.0 - q0;
+      float q0 = codeword[i];
+      float q1 = 1.0f - q0;
       for(int j = 0; j < 3; j++){
         int j2 = Mn[i][j] - 1;
         q0 *= e[j2][i];
         q1 *= 1.0 - e[j2][i];
       }
-      // REAL p = q0 / (q0 + q1);
-      REAL p;
-      if(q0 == 0.0){
-        p = 1.0;
+      // float p = q0 / (q0 + q1);
+      float p;
+      if(q0 == 0.0f){
+        p = 1.0f;
       } else {
-        p = 1.0 / (1.0 + (q1 / q0));
+        p = 1.0f / (1.0f + (q1 / q0));
       }
       cw[i] = (p <= 0.5);
     }
@@ -155,7 +155,7 @@ ldpc_decode(double llcodeword[], int iters, int plain[], int *ok)
           }
         }
         // REAL p = q0 / (q0 + q1);
-        REAL p;
+        float p;
         if(q0 == 0.0){
           p = 1.0;
         } else {
