@@ -33,7 +33,7 @@
 #else
 #define heap_caps_get_free_size(x) (0)
 #endif
-
+#include "ft8lib_ldpc.h"
 
 // 1920-point FFT at 12000 samples/second
 // 6.25 Hz spacing, 0.16 seconds/symbol
@@ -78,8 +78,8 @@ int ncoarse = 1; // number of offsets per hz produced by coarse()
 int ncoarse_blocks = 1;
 double tminus = 2.2; // start looking at 0.5 - tminus seconds
 double tplus = 2.4;
-int coarse_off_n = 2;
-int coarse_hz_n = 2;
+int coarse_off_n = 1;
+int coarse_hz_n = 1;
 double already_hz = 27;
 double overlap = 20;
 int overlap_edges = 0;
@@ -2034,7 +2034,7 @@ extract_bits(const std::vector<int> &syms, const std::vector<double> str)
 // correlations for each possible pair and using the max.
 void
 soft_decode_pairs(const ffts_t &m79x,
-                  double ll174[])
+                  float ll174[])
 {
   ffts_t m79 = c_convert_to_snr(m79x);
                        
@@ -2140,7 +2140,7 @@ soft_decode_pairs(const ffts_t &m79x,
 
 void
 soft_decode_triples(const ffts_t &m79x,
-                    double ll174[])
+                    float ll174[])
 {
   ffts_t m79 = c_convert_to_snr(m79x);
   
@@ -2270,7 +2270,7 @@ soft_decode_triples(const ffts_t &m79x,
 // on success, puts corrected 174 bits into a174[].
 //
 int
-decode(const float ll174[], int a174[], int use_osd, std::string &comment)
+decode(float ll174[], int a174[], int use_osd, std::string &comment)
 {
   void ldpc_decode(float llcodeword[], int iters, int plain[], int *ok);
   void ldpc_decode_log(double codeword[], int iters, int plain[], int *ok);
@@ -2278,12 +2278,26 @@ decode(const float ll174[], int a174[], int use_osd, std::string &comment)
   int plain[174]; // will be 0/1 bits.
   int ldpc_ok = 0;     // 83 will mean success.
 
-  float ll174f[174];
+  // ldpc_decode(ll174, ldpc_iters, plain, &ldpc_ok);
+  
+  uint8_t plain_u[174];
+  int ldpc_ok_u = 0;
+  float ll174u[174];
   for(int i = 0; i < 174; i++){
-    ll174f[i] = (float) ll174[i];
+    ll174u[i] = - ll174[i];
+  }  
+  ft8lib_bp_decode(ll174u, ldpc_iters, plain_u, &ldpc_ok_u);
+  ldpc_ok_u = 83 - ldpc_ok_u; // ft8lib returns number of parity bits that failed, not number that passed.
+  // if(ldpc_ok_u != ldpc_ok){
+  //   printf("ldpc_decode() returned %d, ft8lib_bp_decode() returned %d\n", ldpc_ok, ldpc_ok_u);
+  // }
+  
+  ldpc_ok = ldpc_ok_u;
+  for(int i = 0; i < 174; i++){
+    plain[i] = plain_u[i];
   }
 
-  ldpc_decode(ll174f, ldpc_iters, plain, &ldpc_ok);
+
 
   int ok_thresh = 83; // 83 is perfect
   if(ldpc_ok >= ok_thresh){
@@ -2778,26 +2792,20 @@ one_iter1(const std::vector<float> &samples200x,
   }
 
   if(soft_pairs){
-    double p174[174];
+    float p174[174];
     soft_decode_pairs(m79, p174);
-    float p174f[174];
-    for(int i = 0; i < 174; i++)
-      p174f[i] = (float) p174[i];
-    int ret = try_decode(samples200, p174f, best_hz, best_off,
+    int ret = try_decode(samples200, p174, best_hz, best_off,
                          hz0_for_cb, hz1_for_cb, 1, "", m79);
     if(ret)
       return ret;
     if(soft_ones == 0)
-      memcpy(ll174, p174f, sizeof(ll174));
+      memcpy(ll174, p174, sizeof(ll174));
   }
 
   if(soft_triples){
-    double p174[174];
+    float p174[174];
     soft_decode_triples(m79, p174);
-    float p174f[174];
-    for(int i = 0; i < 174; i++)
-      p174f[i] = (float) p174[i];
-    int ret = try_decode(samples200, p174f, best_hz, best_off,
+    int ret = try_decode(samples200, p174, best_hz, best_off,
                          hz0_for_cb, hz1_for_cb, 1, "", m79);
     if(ret)
       return ret;
@@ -2810,7 +2818,7 @@ one_iter1(const std::vector<float> &samples200x,
         // just CQ
         continue;
       }
-      double n174[174];
+      float n174[174];
       for(int i = 0; i < 174; i++){
         if(i < 28){
           int bit = h & (1 << 27);
@@ -2824,10 +2832,7 @@ one_iter1(const std::vector<float> &samples200x,
           n174[i] = ll174[i];
         }
       }
-      float n174f[174];
-      for(int i = 0; i < 174; i++)
-        n174f[i] = (float) n174[i]; 
-      int ret = try_decode(samples200, n174f, best_hz, best_off,
+      int ret = try_decode(samples200, n174, best_hz, best_off,
                            hz0_for_cb, hz1_for_cb, 0, "hint1", m79);
       if(ret){
         return ret;
@@ -2838,7 +2843,7 @@ one_iter1(const std::vector<float> &samples200x,
   if(use_hints == 1){
     for(int hi = 0; hi < (int)hints2_.size(); hi++){
       int h = hints2_[hi]; // 28-bit number, goes in ll174 29:29+28
-      double n174[174];
+      float n174[174];
       for(int i = 0; i < 174; i++){
         if(i >= 29 && i < 29+28){
           int bit = h & (1 << 27);
@@ -2852,10 +2857,7 @@ one_iter1(const std::vector<float> &samples200x,
           n174[i] = ll174[i];
         }
       }
-      float n174f[174];
-      for(int i = 0; i < 174; i++)
-        n174f[i] = (float) n174[i];
-      int ret = try_decode(samples200, n174f, best_hz, best_off,
+      int ret = try_decode(samples200, n174, best_hz, best_off,
                            hz0_for_cb, hz1_for_cb, 0, "hint2", m79);
       if(ret){
         return ret;
@@ -3193,7 +3195,8 @@ try_decode(const std::vector<float> &samples200,
   int a174[174];
   std::string comment(comment1);
 
-  if(decode(ll174, a174, use_osd, comment)){
+  // if(decode(ll174, a174, use_osd, comment)){
+  if(decode(ll174, a174, 0, comment)){
     // a174 is corrected 91 bits of plain message plus 83 bits of LDPC parity.
 
     // how many of the corrected 174 bits match the received signal in ll174?
